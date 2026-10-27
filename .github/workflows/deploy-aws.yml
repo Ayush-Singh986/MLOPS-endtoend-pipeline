@@ -1,0 +1,120 @@
+name: Train and deploy to AWS ECS
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+    paths:
+      - "model/**"
+      - "docker/**"
+      - ".github/workflows/deploy-aws.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    if: vars.AWS_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_ROLE_TO_ASSUME: ${{ vars.AWS_ROLE_TO_ASSUME }}
+      ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+      ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+      ECS_SERVICE: ${{ vars.ECS_SERVICE }}
+      ECS_TASK_DEFINITION: ${{ vars.ECS_TASK_DEFINITION }}
+      ECS_CONTAINER_NAME: ${{ vars.ECS_CONTAINER_NAME }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r model/requirements.txt
+
+      - name: Test prediction API
+        working-directory: model
+        env:
+          API_KEY: test-api-key-that-is-at-least-32-characters
+        run: python -m unittest discover -s tests -v
+
+      - name: Train model
+        working-directory: model
+        run: python train.py
+
+      - name: Configure AWS credentials with GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push image
+        id: image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+          docker build --platform linux/amd64 -f docker/Dockerfile -t "$IMAGE_URI" .
+          docker push "$IMAGE_URI"
+          echo "uri=$IMAGE_URI" >> "$GITHUB_OUTPUT"
+
+      - name: Register task definition with new image
+        id: task-definition
+        env:
+          IMAGE_URI: ${{ steps.image.outputs.uri }}
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition "$ECS_TASK_DEFINITION" \
+            --query taskDefinition \
+            --output json > task-definition.json
+
+          jq -e --arg container "$ECS_CONTAINER_NAME" \
+            'any(.containerDefinitions[]; .name == $container)' \
+            task-definition.json > /dev/null
+
+          jq --arg container "$ECS_CONTAINER_NAME" --arg image "$IMAGE_URI" '
+            del(
+              .taskDefinitionArn,
+              .revision,
+              .status,
+              .requiresAttributes,
+              .compatibilities,
+              .registeredAt,
+              .registeredBy
+            )
+            | .containerDefinitions |= map(
+                if .name == $container then .image = $image else . end
+              )
+          ' task-definition.json > task-definition-updated.json
+
+          TASK_DEFINITION_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file://task-definition-updated.json \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+          echo "arn=$TASK_DEFINITION_ARN" >> "$GITHUB_OUTPUT"
+
+      - name: Update ECS service
+        run: |
+          aws ecs update-service \
+            --cluster "$ECS_CLUSTER" \
+            --service "$ECS_SERVICE" \
+            --task-definition "${{ steps.task-definition.outputs.arn }}"
+          aws ecs wait services-stable \
+            --cluster "$ECS_CLUSTER" \
+            --services "$ECS_SERVICE"

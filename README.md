@@ -17,7 +17,7 @@ This project demonstrates how a machine-learning model can move from data and tr
 3. **Train candidate models** — It fits Random Forest, Logistic Regression, and XGBoost classifiers using the same training data.
 4. **Evaluate and track experiments** — For each model, it calculates accuracy, precision, recall, and F1 score on the test set. MLflow records these metrics, the model name, and the trained model artifact in `model/mlruns`.
 5. **Choose and save a model** — The script selects the model with the highest test accuracy and saves it to `model/model.pkl`.
-6. **Serve predictions** — `model/predict.py` loads that saved model when the Flask app starts. A client sends the 30 measurements as JSON to `POST /predict`; the API returns the predicted class. `GET /` is a basic health check.
+6. **Serve predictions** — `model/predict.py` loads that saved model when the API starts. A client sends 30 measurements and an API key to `POST /predict`; the API returns the predicted class. Health endpoints are available separately and do not require authentication.
 
 ### Extended Kubeflow workflow
 
@@ -58,23 +58,40 @@ mlflow ui --backend-store-uri ./mlruns --host 127.0.0.1 --port 5001
 
 Open <http://127.0.0.1:5001> to compare the recorded metrics and model runs.
 
-Start the API in a separate terminal, from the repository root:
+Configure an API key and start the production WSGI server from the `model` directory:
 
 ```powershell
-python model\predict.py
+$env:API_KEY = ([guid]::NewGuid().ToString("N") + [guid]::NewGuid().ToString("N"))
+python -c "from waitress import serve; from predict import app; serve(app, host='0.0.0.0', port=5000, threads=4)"
 ```
 
-The API listens on `http://127.0.0.1:5000`. Send a JSON object with the 30 numeric features, in the dataset's original order, to `POST /predict`. The response is a class prediction, such as `{"prediction": 0}`.
+The API listens on `http://127.0.0.1:5000`.
+
+| Method | Route | Authentication | Purpose |
+|---|---|---|---|
+| `GET` | `/health/live` | None | Process liveness check |
+| `GET` | `/health/ready` | None | Readiness check after loading the model |
+| `GET` | `/metrics` | None | Prometheus request metrics |
+| `POST` | `/predict` | `X-API-Key` header | Predict one class from 30 numeric features |
+
+`/predict` validates the JSON body, feature count and numeric finite values. Requests without the configured key return `401`; requests are rate limited to 30 per minute by default. To try it locally, send the same API key in the `X-API-Key` header with the 30 input values in the dataset's original order.
+
+Run the API tests from the `model` directory with `API_KEY` set:
+
+```powershell
+$env:API_KEY = "test-api-key-that-is-at-least-32-characters"
+python -m unittest discover -s tests -v
+```
 
 ## Deployment and monitoring context
 
-The Dockerfile packages the Flask API, and the GitHub Actions workflow trains the model and builds/pushes a Docker image when code is pushed to `main` (Docker Hub credentials must be configured as repository secrets). The workflow does not deploy to Kubernetes.
+The Dockerfile packages the API with Waitress, runs it as a non-root user, and includes a readiness health check. The original GitHub Actions workflow trains the model and builds/pushes a Docker image to Docker Hub when code is pushed to `main` (Docker Hub credentials must be configured as repository secrets).
 
-Kubernetes, Prometheus, and Grafana assets are included as deployment scaffolding, but are not fully connected to the API. In particular, some configuration files are empty and the API does not expose the `/metrics` endpoint expected by the ServiceMonitor. The separate `model/drift_check.py` script demonstrates an offline comparison of two dataset subsets; it does not monitor live API traffic.
+The API exports Prometheus request metrics at `/metrics`, but the repository's Kubernetes, Prometheus, and Grafana deployment files still need configuration before they can be used as a monitoring stack. The separate `model/drift_check.py` script demonstrates an offline comparison of dataset subsets; it does not detect live feature drift.
 
 ## Deploy to AWS (ECR + ECS Fargate)
 
-The following is a manual learning/development deployment using **Amazon ECR** to store the Docker image and **Amazon ECS on AWS Fargate** to run it. It deploys the existing Flask API, not the Kubeflow pipeline. AWS resources can incur charges; review pricing and delete resources when finished.
+The project can run on **Amazon ECS Fargate**, with **Amazon ECR** storing the container image. This serves the API; it does not run the Kubeflow pipeline. AWS resources can incur charges; review pricing and delete resources when finished.
 
 ### 1. Prerequisites
 
@@ -120,7 +137,7 @@ Use an immutable release tag such as `v1` rather than `latest` so task definitio
 
 ### 3. Prepare ECS permissions and cluster
 
-1. In the AWS Console, open **IAM → Roles** and create (or confirm) the ECS task execution role named `ecsTaskExecutionRole`, using the **Elastic Container Service Task** trusted entity and attaching the AWS-managed `AmazonECSTaskExecutionRolePolicy`. ECS uses this role to pull the private ECR image and write container logs.
+1. In the AWS Console, open **IAM → Roles** and create (or confirm) the ECS task execution role named `ecsTaskExecutionRole`, using the **Elastic Container Service Task** trusted entity and attaching the AWS-managed `AmazonECSTaskExecutionRolePolicy`. ECS uses this role to pull the private ECR image and write container logs. Add `secretsmanager:GetSecretValue` permission scoped to the specific API-key secret ARN (and `kms:Decrypt` for its customer-managed KMS key, if applicable).
 2. Open **Amazon ECS → Clusters → Create cluster**. Choose the **AWS Fargate (serverless)** infrastructure option, give the cluster a name such as `breast-cancer-cluster`, and create it.
 
 Do not put AWS credentials inside the image or application. The app itself does not need an AWS task role for its current inference behavior.
@@ -134,9 +151,10 @@ In **ECS → Task definitions → Create new task definition**:
 3. Add a container named `breast-cancer-api` and set its image to the ECR URI with the tag you pushed, for example `<account-id>.dkr.ecr.us-east-1.amazonaws.com/breast-cancer-api:v1`.
 4. Configure a container port mapping for **TCP 5000**.
 5. Enable the `awslogs` log driver and select/create a CloudWatch Logs group (for example `/ecs/breast-cancer-api`) in the same Region.
-6. Save the task definition.
+6. Configure a container health check with command `python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/health/ready', timeout=3)"`, interval 30 seconds, timeout 5 seconds, retries 3, and start period 30 seconds. Configure this in the task definition so ECS uses it for service health.
+7. Save the task definition.
 
-The image starts `python predict.py` and the Flask app listens on port `5000`.
+The image starts Waitress and the API listens on port `5000`. The app requires an `API_KEY` at startup; create a secret in AWS Secrets Manager and configure the task definition's container `secrets` entry to inject it as `API_KEY`. Do not store the API key as plaintext in the task definition or GitHub.
 
 ### 5. Run the service
 
@@ -145,31 +163,32 @@ In the cluster, choose **Create service** and configure:
 1. Compute option **Launch type → Fargate** and select the task definition revision you created.
 2. Set the desired task count to `1`.
 3. Choose a VPC and public subnet(s). For a temporary demo without a load balancer, enable **Auto-assign public IP**.
-4. Create or select a security group whose inbound rule allows **TCP 5000 only from your current public IP** (replace the example `203.0.113.10/32` with your own IP in CIDR notation). Do not open port 5000 to `0.0.0.0/0` for an internet-facing service.
+4. For a short-lived direct-IP test, create or select a security group whose inbound rule allows **TCP 5000 only from your current public IP**. Do not open port 5000 to `0.0.0.0/0`. For regular access, prefer the ALB setup below.
 5. Create the service and wait until the task is `RUNNING`.
 
-For this direct-IP demo, open the running task's **Networking** details, copy its public IP, and test (replace the example address with the task's actual public IP):
+For a direct-IP test, open the running task's **Networking** details, copy its public IP, and test:
 
 ```powershell
-$TaskIp = "54.12.34.56"
-curl.exe "http://${TaskIp}:5000/"
+$TaskUrl = "http://<task-public-ip>:5000"
+curl.exe "$TaskUrl/health/ready"
 ```
 
 Expected health response:
 
 ```json
-{"status":"model API running"}
+{"status":"ready"}
 ```
 
 To try inference, send the 30 numeric dataset features in the same order used by scikit-learn:
 
 ```powershell
-curl.exe -X POST "http://${TaskIp}:5000/predict" `
+curl.exe -X POST "$TaskUrl/predict" `
   -H "Content-Type: application/json" `
+  -H "X-API-Key: <your-api-key>" `
   -d '{"features":[17.99,10.38,122.8,1001.0,0.1184,0.2776,0.3001,0.1471,0.2419,0.07871,1.095,0.9053,8.589,153.4,0.006399,0.04904,0.05373,0.01587,0.03003,0.006193,25.38,17.33,184.6,2019.0,0.1622,0.6656,0.7119,0.2654,0.4601,0.1189]}'
 ```
 
-The direct task IP can change when ECS replaces or restarts a task. For a stable endpoint, use an **Application Load Balancer (ALB)**: create an internet-facing ALB in at least two public subnets, configure an HTTP/HTTPS listener and a target group of type **IP** on port `5000` with health-check path `/`, then attach it to the ECS service. Allow inbound `80`/`443` on the ALB security group, and allow port `5000` on the task security group **only from the ALB security group**. For a real deployment, configure a domain and TLS certificate with AWS Certificate Manager and use HTTPS.
+The direct task IP can change when ECS replaces or restarts a task. For a stable endpoint, use an **Application Load Balancer (ALB)**: create an internet-facing ALB in at least two public subnets, configure an HTTPS listener and a target group of type **IP** on port `5000` with health-check path `/health/ready`, then attach it to the ECS service. Allow inbound `443` on the ALB security group, and allow port `5000` on the task security group **only from the ALB security group**. Configure a domain and TLS certificate with AWS Certificate Manager; redirect HTTP to HTTPS if you also configure port 80. Enable `TRUST_PROXY=1` in the task only when the task security group ensures all client traffic comes through the ALB.
 
 ### 6. Updates, logs, and cleanup
 
@@ -177,8 +196,56 @@ To release an updated model or API, rebuild and push a new version tag to ECR, u
 
 When finished, delete the ECS service (and ALB/target group if created), then the cluster and ECR repository if no longer needed. Also remove unused CloudWatch log groups. ECS tasks, load balancers, image storage, and logs may incur charges.
 
-### Production notes
+### Automated AWS deployment from GitHub Actions
 
-This deployment is for learning, not a production-ready medical service. `predict.py` currently starts Flask's development server; replace it with a production WSGI server before production use. Add input validation, authentication/authorization, HTTPS, rate limiting, appropriate logging/monitoring, and operational health checks. Do not send real patient data to this demo. The existing GitHub Actions workflow publishes to Docker Hub and does not deploy to AWS; AWS automation requires a separate ECR/ECS workflow and securely configured AWS IAM federation/permissions.
+`.github/workflows/deploy-aws.yml` tests the API, trains the model, builds a uniquely tagged image, pushes it to ECR, registers a new ECS task-definition revision, and waits for the ECS service to become stable. It uses GitHub's OIDC federation to assume an AWS role; no long-lived AWS access key is stored in GitHub. The job is disabled until explicitly enabled.
+
+Before enabling it:
+
+1. Create the ECR repository, ECS cluster, Fargate service, task definition, and Secrets Manager API-key secret using the manual steps above.
+2. Create an IAM OIDC identity provider for `token.actions.githubusercontent.com` in the AWS account (if one does not already exist).
+3. Create a GitHub Actions IAM role with a trust policy restricted to audience `sts.amazonaws.com` and this repository's `main` branch subject: `repo:Ayush-Singh986/MLOPS-endtoend-pipeline:ref:refs/heads/main`. Replace `<account-id>` with the AWS account ID:
+
+   ```json
+   {
+     "Version": "2012-10-17",
+     "Statement": [{
+       "Effect": "Allow",
+       "Principal": {
+         "Federated": "arn:aws:iam::<account-id>:oidc-provider/token.actions.githubusercontent.com"
+       },
+       "Action": "sts:AssumeRoleWithWebIdentity",
+       "Condition": {
+         "StringEquals": {
+           "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+           "token.actions.githubusercontent.com:sub": "repo:Ayush-Singh986/MLOPS-endtoend-pipeline:ref:refs/heads/main"
+         }
+       }
+     }]
+   }
+   ```
+
+4. Attach a least-privilege permissions policy to that role. It needs `ecr:GetAuthorizationToken` on `*`; ECR image upload actions only on the chosen repository ARN; ECS describe/register actions for the chosen task definition (some describe/register actions require `*`); `ecs:UpdateService` and `ecs:DescribeServices` only on the chosen service ARN; and `iam:PassRole` only for the ECS task execution/task roles referenced by the task definition, conditioned on `iam:PassedToService` being `ecs-tasks.amazonaws.com`. Avoid `AdministratorAccess`. Confirm the final resource scopes against the ECS/ECR IAM action reference for your account.
+5. In GitHub **Settings → Secrets and variables → Actions → Variables**, add:
+
+   | Variable | Example | Purpose |
+   |---|---|---|
+   | `AWS_DEPLOY_ENABLED` | `true` | Enables the deployment job |
+   | `AWS_REGION` | `us-east-1` | AWS Region for ECR/ECS |
+   | `AWS_ROLE_TO_ASSUME` | `arn:aws:iam::123456789012:role/github-ecs-deploy` | OIDC role ARN |
+   | `ECR_REPOSITORY` | `breast-cancer-api` | Existing ECR repository name |
+   | `ECS_CLUSTER` | `breast-cancer-cluster` | ECS cluster name |
+   | `ECS_SERVICE` | `breast-cancer-api` | Existing ECS service name |
+   | `ECS_TASK_DEFINITION` | `breast-cancer-api` | Task-definition family or ARN |
+   | `ECS_CONTAINER_NAME` | `breast-cancer-api` | Container name inside task definition |
+
+6. Confirm the ECS task definition injects `API_KEY` from Secrets Manager, uses port `5000`, and has the health check enabled. Configure an ALB for HTTPS and restrict the task security group to ALB traffic for a public service.
+7. Push a change to `main` that touches `model/` or `docker/`, or manually run **Actions → Train and deploy to AWS ECS → Run workflow**.
+
+The workflow updates only the container image in the existing task definition. It does not create AWS infrastructure, generate API keys, alter networking, or provision an ALB. Review the AWS role's trust and permissions and the ECS service's network settings before enabling automatic deployments.
+
+### Security and operational limitations
+
+The API now uses Waitress, requires an `API_KEY`, validates prediction inputs, rate-limits requests, logs request metadata/errors without logging feature payloads, and exposes liveness/readiness and Prometheus metrics endpoints. Restrict `/metrics` to trusted monitoring systems. Rate limiting uses in-memory storage by default; for multiple ECS tasks, configure a shared Redis-compatible `RATELIMIT_STORAGE_URI` and private networking. Terminate HTTPS at an ALB with ACM; do not expose the task directly to the internet. This remains a learning example, not a production-ready medical service. Do not send real patient data to it or use its predictions for clinical decisions.
 
 > **Disclaimer:** This is an educational example, not a medical diagnostic tool. Do not use its predictions for clinical decisions.

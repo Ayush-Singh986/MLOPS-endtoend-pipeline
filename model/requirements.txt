@@ -1,6 +1,8 @@
 flask
-scikit-learn
+scikit-learn==1.8.0
 joblib
 mlflow
 prometheus-flask-exporter
 xgboost
+Flask-Limiter
+waitress
