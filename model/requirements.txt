@@ -1,0 +1,6 @@
+flask
+scikit-learn
+joblib
+mlflow
+prometheus-flask-exporter
+xgboost

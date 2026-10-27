@@ -1,0 +1,8 @@
+artifact_location: file:C:\Users\Sufyan\Documents\MLOPS_project\model\mlruns/305234878293809594
+creation_time: 1777285728864
+experiment_id: '305234878293809594'
+last_update_time: 1777285728864
+lifecycle_stage: active
+name: breast_cancer_classification
+trace_location: null
+workspace: default

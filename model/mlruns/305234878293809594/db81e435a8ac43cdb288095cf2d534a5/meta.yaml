@@ -1,0 +1,14 @@
+artifact_uri: file:C:\Users\Sufyan\Documents\MLOPS_project\model\mlruns/305234878293809594/db81e435a8ac43cdb288095cf2d534a5/artifacts
+end_time: 1777285736313
+entry_point_name: ''
+experiment_id: '305234878293809594'
+lifecycle_stage: active
+run_id: db81e435a8ac43cdb288095cf2d534a5
+run_name: xgboost
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1777285734185
+status: 3
+tags: []
+user_id: Sufyan

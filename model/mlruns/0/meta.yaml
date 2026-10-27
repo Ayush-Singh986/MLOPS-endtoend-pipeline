@@ -1,0 +1,8 @@
+artifact_location: file:C:\Users\Sufyan\Documents\MLOPS_project\model\mlruns/0
+creation_time: 1777285728856
+experiment_id: '0'
+last_update_time: 1777285728856
+lifecycle_stage: active
+name: Default
+trace_location: null
+workspace: default

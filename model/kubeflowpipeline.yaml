@@ -1,0 +1,2047 @@
+# PIPELINE DEFINITION
+# Name: novel-conformal-ml-pipeline
+# Description: End-to-end MLOps pipeline with 5 models, model selection, and conformal prediction.
+# Inputs:
+#    alpha: float [Default: 0.05]
+#    auc_threshold: float [Default: 0.85]
+#    coverage_threshold: float [Default: 0.9]
+#    recall_threshold: float [Default: 0.8]
+components:
+  comp-condition-1:
+    dag:
+      tasks:
+        deploy-op:
+          cachingOptions:
+            enableCache: true
+          componentRef:
+            name: comp-deploy-op
+          dependentTasks:
+          - pre-deploy-checks-op
+          inputs:
+            artifacts:
+              model:
+                componentInputArtifact: pipelinechannel--conformal-calibration-op-calibrated_model
+            parameters:
+              avg_set_size:
+                componentInputParameter: pipelinechannel--evaluate-conformal-op-avg_set_size
+              coverage:
+                componentInputParameter: pipelinechannel--evaluate-conformal-op-coverage
+          taskInfo:
+            name: deploy-op
+        pre-deploy-checks-op:
+          cachingOptions:
+            enableCache: true
+          componentRef:
+            name: comp-pre-deploy-checks-op
+          inputs:
+            artifacts:
+              model:
+                componentInputArtifact: pipelinechannel--conformal-calibration-op-calibrated_model
+          taskInfo:
+            name: pre-deploy-checks-op
+    inputDefinitions:
+      artifacts:
+        pipelinechannel--conformal-calibration-op-calibrated_model:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+      parameters:
+        pipelinechannel--coverage_threshold:
+          parameterType: NUMBER_DOUBLE
+        pipelinechannel--evaluate-conformal-op-avg_set_size:
+          parameterType: NUMBER_DOUBLE
+        pipelinechannel--evaluate-conformal-op-coverage:
+          parameterType: NUMBER_DOUBLE
+  comp-conformal-calibration-op:
+    executorLabel: exec-conformal-calibration-op
+    inputDefinitions:
+      artifacts:
+        cal_data:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+        model:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+      parameters:
+        alpha:
+          defaultValue: 0.05
+          isOptional: true
+          parameterType: NUMBER_DOUBLE
+    outputDefinitions:
+      artifacts:
+        calibrated_model:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+      parameters:
+        empirical_coverage_cal:
+          parameterType: NUMBER_DOUBLE
+        threshold:
+          parameterType: NUMBER_DOUBLE
+  comp-deploy-op:
+    executorLabel: exec-deploy-op
+    inputDefinitions:
+      artifacts:
+        model:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+      parameters:
+        avg_set_size:
+          parameterType: NUMBER_DOUBLE
+        coverage:
+          parameterType: NUMBER_DOUBLE
+    outputDefinitions:
+      parameters:
+        Output:
+          parameterType: STRING
+  comp-evaluate-conformal-op:
+    executorLabel: exec-evaluate-conformal-op
+    inputDefinitions:
+      artifacts:
+        calibrated_model:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+        test_data:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+    outputDefinitions:
+      parameters:
+        accuracy_original:
+          parameterType: NUMBER_DOUBLE
+        avg_set_size:
+          parameterType: NUMBER_DOUBLE
+        coverage:
+          parameterType: NUMBER_DOUBLE
+  comp-evaluate-op:
+    executorLabel: exec-evaluate-op
+    inputDefinitions:
+      artifacts:
+        data:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+        model:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+      parameters:
+        false_alarm_cost:
+          defaultValue: 10.0
+          isOptional: true
+          parameterType: NUMBER_DOUBLE
+        fraud_loss_cost:
+          defaultValue: 500.0
+          isOptional: true
+          parameterType: NUMBER_DOUBLE
+    outputDefinitions:
+      parameters:
+        accuracy:
+          parameterType: NUMBER_DOUBLE
+        auc_roc:
+          parameterType: NUMBER_DOUBLE
+        business_cost:
+          parameterType: NUMBER_DOUBLE
+        f1:
+          parameterType: NUMBER_DOUBLE
+        false_negatives:
+          parameterType: NUMBER_DOUBLE
+        false_positives:
+          parameterType: NUMBER_DOUBLE
+        precision:
+          parameterType: NUMBER_DOUBLE
+        recall:
+          parameterType: NUMBER_DOUBLE
+  comp-evaluate-op-2:
+    executorLabel: exec-evaluate-op-2
+    inputDefinitions:
+      artifacts:
+        data:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+        model:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+      parameters:
+        false_alarm_cost:
+          defaultValue: 10.0
+          isOptional: true
+          parameterType: NUMBER_DOUBLE
+        fraud_loss_cost:
+          defaultValue: 500.0
+          isOptional: true
+          parameterType: NUMBER_DOUBLE
+    outputDefinitions:
+      parameters:
+        accuracy:
+          parameterType: NUMBER_DOUBLE
+        auc_roc:
+          parameterType: NUMBER_DOUBLE
+        business_cost:
+          parameterType: NUMBER_DOUBLE
+        f1:
+          parameterType: NUMBER_DOUBLE
+        false_negatives:
+          parameterType: NUMBER_DOUBLE
+        false_positives:
+          parameterType: NUMBER_DOUBLE
+        precision:
+          parameterType: NUMBER_DOUBLE
+        recall:
+          parameterType: NUMBER_DOUBLE
+  comp-evaluate-op-3:
+    executorLabel: exec-evaluate-op-3
+    inputDefinitions:
+      artifacts:
+        data:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+        model:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+      parameters:
+        false_alarm_cost:
+          defaultValue: 10.0
+          isOptional: true
+          parameterType: NUMBER_DOUBLE
+        fraud_loss_cost:
+          defaultValue: 500.0
+          isOptional: true
+          parameterType: NUMBER_DOUBLE
+    outputDefinitions:
+      parameters:
+        accuracy:
+          parameterType: NUMBER_DOUBLE
+        auc_roc:
+          parameterType: NUMBER_DOUBLE
+        business_cost:
+          parameterType: NUMBER_DOUBLE
+        f1:
+          parameterType: NUMBER_DOUBLE
+        false_negatives:
+          parameterType: NUMBER_DOUBLE
+        false_positives:
+          parameterType: NUMBER_DOUBLE
+        precision:
+          parameterType: NUMBER_DOUBLE
+        recall:
+          parameterType: NUMBER_DOUBLE
+  comp-evaluate-op-4:
+    executorLabel: exec-evaluate-op-4
+    inputDefinitions:
+      artifacts:
+        data:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+        model:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+      parameters:
+        false_alarm_cost:
+          defaultValue: 10.0
+          isOptional: true
+          parameterType: NUMBER_DOUBLE
+        fraud_loss_cost:
+          defaultValue: 500.0
+          isOptional: true
+          parameterType: NUMBER_DOUBLE
+    outputDefinitions:
+      parameters:
+        accuracy:
+          parameterType: NUMBER_DOUBLE
+        auc_roc:
+          parameterType: NUMBER_DOUBLE
+        business_cost:
+          parameterType: NUMBER_DOUBLE
+        f1:
+          parameterType: NUMBER_DOUBLE
+        false_negatives:
+          parameterType: NUMBER_DOUBLE
+        false_positives:
+          parameterType: NUMBER_DOUBLE
+        precision:
+          parameterType: NUMBER_DOUBLE
+        recall:
+          parameterType: NUMBER_DOUBLE
+  comp-evaluate-op-5:
+    executorLabel: exec-evaluate-op-5
+    inputDefinitions:
+      artifacts:
+        data:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+        model:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+      parameters:
+        false_alarm_cost:
+          defaultValue: 10.0
+          isOptional: true
+          parameterType: NUMBER_DOUBLE
+        fraud_loss_cost:
+          defaultValue: 500.0
+          isOptional: true
+          parameterType: NUMBER_DOUBLE
+    outputDefinitions:
+      parameters:
+        accuracy:
+          parameterType: NUMBER_DOUBLE
+        auc_roc:
+          parameterType: NUMBER_DOUBLE
+        business_cost:
+          parameterType: NUMBER_DOUBLE
+        f1:
+          parameterType: NUMBER_DOUBLE
+        false_negatives:
+          parameterType: NUMBER_DOUBLE
+        false_positives:
+          parameterType: NUMBER_DOUBLE
+        precision:
+          parameterType: NUMBER_DOUBLE
+        recall:
+          parameterType: NUMBER_DOUBLE
+  comp-feature-op:
+    executorLabel: exec-feature-op
+    inputDefinitions:
+      artifacts:
+        data:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+    outputDefinitions:
+      artifacts:
+        output_data:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+  comp-ingestion-op:
+    executorLabel: exec-ingestion-op
+    outputDefinitions:
+      artifacts:
+        output_data:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+  comp-pre-deploy-checks-op:
+    executorLabel: exec-pre-deploy-checks-op
+    inputDefinitions:
+      artifacts:
+        model:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+      parameters:
+        max_size_mb:
+          defaultValue: 50.0
+          isOptional: true
+          parameterType: NUMBER_DOUBLE
+    outputDefinitions:
+      parameters:
+        Output:
+          parameterType: STRING
+  comp-preprocess-op:
+    executorLabel: exec-preprocess-op
+    inputDefinitions:
+      artifacts:
+        cal_data:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+        test_data:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+        train_data:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+      parameters:
+        high_cardinality_threshold:
+          defaultValue: 50.0
+          isOptional: true
+          parameterType: NUMBER_INTEGER
+    outputDefinitions:
+      artifacts:
+        processed_cal_data:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+        processed_test_data:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+        processed_train_data:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+  comp-select-best-model-op:
+    executorLabel: exec-select-best-model-op
+    inputDefinitions:
+      artifacts:
+        model_1:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+        model_2:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+        model_3:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+        model_4:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+        model_5:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+      parameters:
+        auc_1:
+          parameterType: NUMBER_DOUBLE
+        auc_2:
+          parameterType: NUMBER_DOUBLE
+        auc_3:
+          parameterType: NUMBER_DOUBLE
+        auc_4:
+          parameterType: NUMBER_DOUBLE
+        auc_5:
+          parameterType: NUMBER_DOUBLE
+        cost_1:
+          parameterType: NUMBER_DOUBLE
+        cost_2:
+          parameterType: NUMBER_DOUBLE
+        cost_3:
+          parameterType: NUMBER_DOUBLE
+        cost_4:
+          parameterType: NUMBER_DOUBLE
+        cost_5:
+          parameterType: NUMBER_DOUBLE
+        recall_1:
+          parameterType: NUMBER_DOUBLE
+        recall_2:
+          parameterType: NUMBER_DOUBLE
+        recall_3:
+          parameterType: NUMBER_DOUBLE
+        recall_4:
+          parameterType: NUMBER_DOUBLE
+        recall_5:
+          parameterType: NUMBER_DOUBLE
+    outputDefinitions:
+      artifacts:
+        selected_model:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+      parameters:
+        best_auc:
+          parameterType: NUMBER_DOUBLE
+        best_business_cost:
+          parameterType: NUMBER_DOUBLE
+        best_model_name:
+          parameterType: STRING
+        best_recall:
+          parameterType: NUMBER_DOUBLE
+  comp-split-calibration-op:
+    executorLabel: exec-split-calibration-op
+    inputDefinitions:
+      artifacts:
+        data:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+      parameters:
+        cal_frac:
+          defaultValue: 0.2
+          isOptional: true
+          parameterType: NUMBER_DOUBLE
+        random_state:
+          defaultValue: 42.0
+          isOptional: true
+          parameterType: NUMBER_INTEGER
+        train_frac:
+          defaultValue: 0.6
+          isOptional: true
+          parameterType: NUMBER_DOUBLE
+    outputDefinitions:
+      artifacts:
+        cal_data:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+        test_data:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+        train_data:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+  comp-train-1:
+    executorLabel: exec-train-1
+    inputDefinitions:
+      artifacts:
+        data:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+    outputDefinitions:
+      artifacts:
+        model:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+  comp-train-2:
+    executorLabel: exec-train-2
+    inputDefinitions:
+      artifacts:
+        data:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+    outputDefinitions:
+      artifacts:
+        model:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+  comp-train-3:
+    executorLabel: exec-train-3
+    inputDefinitions:
+      artifacts:
+        data:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+    outputDefinitions:
+      artifacts:
+        model:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+  comp-train-4:
+    executorLabel: exec-train-4
+    inputDefinitions:
+      artifacts:
+        data:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+    outputDefinitions:
+      artifacts:
+        model:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+  comp-train-5:
+    executorLabel: exec-train-5
+    inputDefinitions:
+      artifacts:
+        data:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+    outputDefinitions:
+      artifacts:
+        model:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+  comp-validation-op:
+    executorLabel: exec-validation-op
+    inputDefinitions:
+      artifacts:
+        data:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+    outputDefinitions:
+      parameters:
+        Output:
+          parameterType: STRING
+deploymentSpec:
+  executors:
+    exec-conformal-calibration-op:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - conformal_calibration_op
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'pandas' 'numpy'\
+          \ 'scikit-learn' 'joblib' 'xgboost' 'lightgbm'  &&  python3 -m pip install\
+          \ --quiet --no-warn-script-location 'kfp==2.16.0' '--no-deps' 'typing-extensions>=3.7.4,<5;\
+          \ python_version<\"3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef conformal_calibration_op(\n    model: Input[Model],\n    cal_data:\
+          \ Input[Dataset],\n    calibrated_model: Output[Model],\n    alpha: float\
+          \ = 0.05,\n) -> NamedTuple(\"CalibMetrics\", [(\"threshold\", float), (\"\
+          empirical_coverage_cal\", float)]):\n    import joblib\n    import numpy\
+          \ as np\n    import pandas as pd\n\n    df = pd.read_csv(cal_data.path)\n\
+          \    target_col = \"target\"\n    y_cal = df[target_col]\n    X_cal = df.drop(columns=[target_col])\n\
+          \n    clf = joblib.load(model.path)\n    proba = clf.predict_proba(X_cal)\n\
+          \    true_probs = proba[np.arange(len(y_cal)), y_cal]\n    nonconformity\
+          \ = 1 - true_probs\n\n    n = len(nonconformity)\n    quantile = np.ceil((n\
+          \ + 1) * (1 - alpha)) / n\n    threshold = np.quantile(nonconformity, quantile,\
+          \ method=\"higher\")\n\n    pred_sets = []\n    for i in range(len(X_cal)):\n\
+          \        probs = clf.predict_proba(X_cal.iloc[[i]])[0]\n        ncf = 1\
+          \ - probs\n        included = ncf <= threshold\n        pred_set = list(np.where(included)[0])\n\
+          \        pred_sets.append(pred_set)\n    coverages = [1 if y_cal.iloc[i]\
+          \ in pred_set else 0 for i, pred_set in enumerate(pred_sets)]\n    empirical_cov\
+          \ = np.mean(coverages)\n\n    calibrated_dict = {\n        \"model\": clf,\n\
+          \        \"threshold\": float(threshold),\n        \"alpha\": alpha,\n \
+          \       \"classes\": clf.classes_.tolist()\n    }\n    joblib.dump(calibrated_dict,\
+          \ calibrated_model.path)\n\n    print(f\"Conformal calibration: alpha={alpha},\
+          \ threshold={threshold:.4f}, empirical coverage = {empirical_cov:.3f}\"\
+          )\n    return (float(threshold), float(empirical_cov))\n\n"
+        image: python:3.11
+        resources:
+          cpuLimit: 1.0
+          memoryLimit: 2.147483648
+          resourceCpuLimit: '1'
+          resourceMemoryLimit: 2Gi
+    exec-deploy-op:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - deploy_op
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.16.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef deploy_op(\n    model: Input[Model],\n    coverage: float,\n\
+          \    avg_set_size: float,\n) -> str:\n    print(f\"Deploying conformalized\
+          \ model with coverage={coverage:.3f}, average set size={avg_set_size:.2f}\"\
+          )\n    print(f\"Model artifact path: {model.path}\")\n    return \"Deployment\
+          \ triggered\"\n\n"
+        image: python:3.11
+        resources:
+          cpuLimit: 1.0
+          memoryLimit: 1.073741824
+          resourceCpuLimit: '1'
+          resourceMemoryLimit: 1Gi
+    exec-evaluate-conformal-op:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - evaluate_conformal_op
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'pandas' 'numpy'\
+          \ 'scikit-learn' 'joblib' 'xgboost' 'lightgbm'  &&  python3 -m pip install\
+          \ --quiet --no-warn-script-location 'kfp==2.16.0' '--no-deps' 'typing-extensions>=3.7.4,<5;\
+          \ python_version<\"3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef evaluate_conformal_op(\n    calibrated_model: Input[Model],\n\
+          \    test_data: Input[Dataset],\n) -> NamedTuple(\"TestMetrics\", [(\"coverage\"\
+          , float), (\"avg_set_size\", float), (\"accuracy_original\", float)]):\n\
+          \    import numpy as np\n    import pandas as pd\n    import joblib\n\n\
+          \    df = pd.read_csv(test_data.path)\n    target_col = \"target\"\n   \
+          \ y_test = df[target_col]\n    X_test = df.drop(columns=[target_col])\n\n\
+          \    calib = joblib.load(calibrated_model.path)\n    clf = calib[\"model\"\
+          ]\n    threshold = calib[\"threshold\"]\n\n    proba = clf.predict_proba(X_test)\n\
+          \    pred_sets = []\n    for i in range(len(X_test)):\n        probs = proba[i]\n\
+          \        ncf = 1 - probs\n        included = ncf <= threshold\n        pred_set\
+          \ = list(np.where(included)[0])\n        pred_sets.append(pred_set)\n\n\
+          \    coverage = np.mean([1 if y_test.iloc[i] in pred_set else 0 for i, pred_set\
+          \ in enumerate(pred_sets)])\n    avg_set_size = np.mean([len(ps) for ps\
+          \ in pred_sets])\n    y_pred = clf.predict(X_test)\n    accuracy = np.mean(y_pred\
+          \ == y_test)\n\n    print(f\"Test results: Coverage = {coverage:.3f} (target\
+          \ = {1-calib['alpha']:.3f}), Avg set size = {avg_set_size:.2f}, Accuracy\
+          \ = {accuracy:.3f}\")\n    return (float(coverage), float(avg_set_size),\
+          \ float(accuracy))\n\n"
+        image: python:3.11
+        resources:
+          cpuLimit: 1.0
+          memoryLimit: 1.073741824
+          resourceCpuLimit: '1'
+          resourceMemoryLimit: 1Gi
+    exec-evaluate-op:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - evaluate_op
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'pandas' 'scikit-learn'\
+          \ 'joblib' 'xgboost' 'lightgbm'  &&  python3 -m pip install --quiet --no-warn-script-location\
+          \ 'kfp==2.16.0' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
+          3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef evaluate_op(\n    data: Input[Dataset],\n    model: Input[Model],\n\
+          \    fraud_loss_cost: float = 500.0,\n    false_alarm_cost: float = 10.0,\n\
+          ) -> NamedTuple(\n    \"Metrics\",\n    [\n        (\"accuracy\", float),\n\
+          \        (\"precision\", float),\n        (\"recall\", float),\n       \
+          \ (\"f1\", float),\n        (\"auc_roc\", float),\n        (\"false_positives\"\
+          , float),\n        (\"false_negatives\", float),\n        (\"business_cost\"\
+          , float),\n    ],\n):\n    import joblib\n    import pandas as pd\n    from\
+          \ sklearn.metrics import accuracy_score, confusion_matrix, f1_score, precision_score,\
+          \ recall_score, roc_auc_score\n\n    target_col = \"target\"\n    df = pd.read_csv(data.path,\
+          \ low_memory=False)\n    y_true = df[target_col]\n    X = df.drop(columns=[target_col])\n\
+          \    clf = joblib.load(model.path)\n    preds = clf.predict(X)\n    try:\n\
+          \        scores = clf.predict_proba(X)[:, 1]\n    except Exception:\n  \
+          \      try:\n            scores = clf.decision_function(X)\n        except\
+          \ Exception:\n            scores = preds\n    tn, fp, fn, tp = confusion_matrix(y_true,\
+          \ preds, labels=[0, 1]).ravel()\n    accuracy = accuracy_score(y_true, preds)\n\
+          \    precision = precision_score(y_true, preds, zero_division=0)\n    recall\
+          \ = recall_score(y_true, preds, zero_division=0)\n    f1 = f1_score(y_true,\
+          \ preds, zero_division=0)\n    auc_roc = roc_auc_score(y_true, scores) if\
+          \ len(set(y_true)) > 1 else 0.5\n    business_cost = float(fn * fraud_loss_cost\
+          \ + fp * false_alarm_cost)\n    return (float(accuracy), float(precision),\
+          \ float(recall), float(f1),\n            float(auc_roc), float(fp), float(fn),\
+          \ float(business_cost))\n\n"
+        image: python:3.11
+    exec-evaluate-op-2:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - evaluate_op
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'pandas' 'scikit-learn'\
+          \ 'joblib' 'xgboost' 'lightgbm'  &&  python3 -m pip install --quiet --no-warn-script-location\
+          \ 'kfp==2.16.0' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
+          3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef evaluate_op(\n    data: Input[Dataset],\n    model: Input[Model],\n\
+          \    fraud_loss_cost: float = 500.0,\n    false_alarm_cost: float = 10.0,\n\
+          ) -> NamedTuple(\n    \"Metrics\",\n    [\n        (\"accuracy\", float),\n\
+          \        (\"precision\", float),\n        (\"recall\", float),\n       \
+          \ (\"f1\", float),\n        (\"auc_roc\", float),\n        (\"false_positives\"\
+          , float),\n        (\"false_negatives\", float),\n        (\"business_cost\"\
+          , float),\n    ],\n):\n    import joblib\n    import pandas as pd\n    from\
+          \ sklearn.metrics import accuracy_score, confusion_matrix, f1_score, precision_score,\
+          \ recall_score, roc_auc_score\n\n    target_col = \"target\"\n    df = pd.read_csv(data.path,\
+          \ low_memory=False)\n    y_true = df[target_col]\n    X = df.drop(columns=[target_col])\n\
+          \    clf = joblib.load(model.path)\n    preds = clf.predict(X)\n    try:\n\
+          \        scores = clf.predict_proba(X)[:, 1]\n    except Exception:\n  \
+          \      try:\n            scores = clf.decision_function(X)\n        except\
+          \ Exception:\n            scores = preds\n    tn, fp, fn, tp = confusion_matrix(y_true,\
+          \ preds, labels=[0, 1]).ravel()\n    accuracy = accuracy_score(y_true, preds)\n\
+          \    precision = precision_score(y_true, preds, zero_division=0)\n    recall\
+          \ = recall_score(y_true, preds, zero_division=0)\n    f1 = f1_score(y_true,\
+          \ preds, zero_division=0)\n    auc_roc = roc_auc_score(y_true, scores) if\
+          \ len(set(y_true)) > 1 else 0.5\n    business_cost = float(fn * fraud_loss_cost\
+          \ + fp * false_alarm_cost)\n    return (float(accuracy), float(precision),\
+          \ float(recall), float(f1),\n            float(auc_roc), float(fp), float(fn),\
+          \ float(business_cost))\n\n"
+        image: python:3.11
+    exec-evaluate-op-3:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - evaluate_op
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'pandas' 'scikit-learn'\
+          \ 'joblib' 'xgboost' 'lightgbm'  &&  python3 -m pip install --quiet --no-warn-script-location\
+          \ 'kfp==2.16.0' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
+          3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef evaluate_op(\n    data: Input[Dataset],\n    model: Input[Model],\n\
+          \    fraud_loss_cost: float = 500.0,\n    false_alarm_cost: float = 10.0,\n\
+          ) -> NamedTuple(\n    \"Metrics\",\n    [\n        (\"accuracy\", float),\n\
+          \        (\"precision\", float),\n        (\"recall\", float),\n       \
+          \ (\"f1\", float),\n        (\"auc_roc\", float),\n        (\"false_positives\"\
+          , float),\n        (\"false_negatives\", float),\n        (\"business_cost\"\
+          , float),\n    ],\n):\n    import joblib\n    import pandas as pd\n    from\
+          \ sklearn.metrics import accuracy_score, confusion_matrix, f1_score, precision_score,\
+          \ recall_score, roc_auc_score\n\n    target_col = \"target\"\n    df = pd.read_csv(data.path,\
+          \ low_memory=False)\n    y_true = df[target_col]\n    X = df.drop(columns=[target_col])\n\
+          \    clf = joblib.load(model.path)\n    preds = clf.predict(X)\n    try:\n\
+          \        scores = clf.predict_proba(X)[:, 1]\n    except Exception:\n  \
+          \      try:\n            scores = clf.decision_function(X)\n        except\
+          \ Exception:\n            scores = preds\n    tn, fp, fn, tp = confusion_matrix(y_true,\
+          \ preds, labels=[0, 1]).ravel()\n    accuracy = accuracy_score(y_true, preds)\n\
+          \    precision = precision_score(y_true, preds, zero_division=0)\n    recall\
+          \ = recall_score(y_true, preds, zero_division=0)\n    f1 = f1_score(y_true,\
+          \ preds, zero_division=0)\n    auc_roc = roc_auc_score(y_true, scores) if\
+          \ len(set(y_true)) > 1 else 0.5\n    business_cost = float(fn * fraud_loss_cost\
+          \ + fp * false_alarm_cost)\n    return (float(accuracy), float(precision),\
+          \ float(recall), float(f1),\n            float(auc_roc), float(fp), float(fn),\
+          \ float(business_cost))\n\n"
+        image: python:3.11
+    exec-evaluate-op-4:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - evaluate_op
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'pandas' 'scikit-learn'\
+          \ 'joblib' 'xgboost' 'lightgbm'  &&  python3 -m pip install --quiet --no-warn-script-location\
+          \ 'kfp==2.16.0' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
+          3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef evaluate_op(\n    data: Input[Dataset],\n    model: Input[Model],\n\
+          \    fraud_loss_cost: float = 500.0,\n    false_alarm_cost: float = 10.0,\n\
+          ) -> NamedTuple(\n    \"Metrics\",\n    [\n        (\"accuracy\", float),\n\
+          \        (\"precision\", float),\n        (\"recall\", float),\n       \
+          \ (\"f1\", float),\n        (\"auc_roc\", float),\n        (\"false_positives\"\
+          , float),\n        (\"false_negatives\", float),\n        (\"business_cost\"\
+          , float),\n    ],\n):\n    import joblib\n    import pandas as pd\n    from\
+          \ sklearn.metrics import accuracy_score, confusion_matrix, f1_score, precision_score,\
+          \ recall_score, roc_auc_score\n\n    target_col = \"target\"\n    df = pd.read_csv(data.path,\
+          \ low_memory=False)\n    y_true = df[target_col]\n    X = df.drop(columns=[target_col])\n\
+          \    clf = joblib.load(model.path)\n    preds = clf.predict(X)\n    try:\n\
+          \        scores = clf.predict_proba(X)[:, 1]\n    except Exception:\n  \
+          \      try:\n            scores = clf.decision_function(X)\n        except\
+          \ Exception:\n            scores = preds\n    tn, fp, fn, tp = confusion_matrix(y_true,\
+          \ preds, labels=[0, 1]).ravel()\n    accuracy = accuracy_score(y_true, preds)\n\
+          \    precision = precision_score(y_true, preds, zero_division=0)\n    recall\
+          \ = recall_score(y_true, preds, zero_division=0)\n    f1 = f1_score(y_true,\
+          \ preds, zero_division=0)\n    auc_roc = roc_auc_score(y_true, scores) if\
+          \ len(set(y_true)) > 1 else 0.5\n    business_cost = float(fn * fraud_loss_cost\
+          \ + fp * false_alarm_cost)\n    return (float(accuracy), float(precision),\
+          \ float(recall), float(f1),\n            float(auc_roc), float(fp), float(fn),\
+          \ float(business_cost))\n\n"
+        image: python:3.11
+    exec-evaluate-op-5:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - evaluate_op
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'pandas' 'scikit-learn'\
+          \ 'joblib' 'xgboost' 'lightgbm'  &&  python3 -m pip install --quiet --no-warn-script-location\
+          \ 'kfp==2.16.0' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
+          3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef evaluate_op(\n    data: Input[Dataset],\n    model: Input[Model],\n\
+          \    fraud_loss_cost: float = 500.0,\n    false_alarm_cost: float = 10.0,\n\
+          ) -> NamedTuple(\n    \"Metrics\",\n    [\n        (\"accuracy\", float),\n\
+          \        (\"precision\", float),\n        (\"recall\", float),\n       \
+          \ (\"f1\", float),\n        (\"auc_roc\", float),\n        (\"false_positives\"\
+          , float),\n        (\"false_negatives\", float),\n        (\"business_cost\"\
+          , float),\n    ],\n):\n    import joblib\n    import pandas as pd\n    from\
+          \ sklearn.metrics import accuracy_score, confusion_matrix, f1_score, precision_score,\
+          \ recall_score, roc_auc_score\n\n    target_col = \"target\"\n    df = pd.read_csv(data.path,\
+          \ low_memory=False)\n    y_true = df[target_col]\n    X = df.drop(columns=[target_col])\n\
+          \    clf = joblib.load(model.path)\n    preds = clf.predict(X)\n    try:\n\
+          \        scores = clf.predict_proba(X)[:, 1]\n    except Exception:\n  \
+          \      try:\n            scores = clf.decision_function(X)\n        except\
+          \ Exception:\n            scores = preds\n    tn, fp, fn, tp = confusion_matrix(y_true,\
+          \ preds, labels=[0, 1]).ravel()\n    accuracy = accuracy_score(y_true, preds)\n\
+          \    precision = precision_score(y_true, preds, zero_division=0)\n    recall\
+          \ = recall_score(y_true, preds, zero_division=0)\n    f1 = f1_score(y_true,\
+          \ preds, zero_division=0)\n    auc_roc = roc_auc_score(y_true, scores) if\
+          \ len(set(y_true)) > 1 else 0.5\n    business_cost = float(fn * fraud_loss_cost\
+          \ + fp * false_alarm_cost)\n    return (float(accuracy), float(precision),\
+          \ float(recall), float(f1),\n            float(auc_roc), float(fp), float(fn),\
+          \ float(business_cost))\n\n"
+        image: python:3.11
+    exec-feature-op:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - feature_op
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'pandas' 'numpy'\
+          \  &&  python3 -m pip install --quiet --no-warn-script-location 'kfp==2.16.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef feature_op(data: Input[Dataset], output_data: Output[Dataset])\
+          \ -> None:\n    import numpy as np\n    import pandas as pd\n    df = pd.read_csv(data.path,\
+          \ low_memory=False)\n    numeric_cols = [c for c in df.columns if c != \"\
+          target\" and pd.api.types.is_numeric_dtype(df[c])]\n    if len(numeric_cols)\
+          \ >= 3:\n        df[\"mean_first_three\"] = df[numeric_cols[:3]].mean(axis=1)\n\
+          \        df[\"std_first_three\"] = df[numeric_cols[:3]].std(axis=1)\n  \
+          \      df[\"sum_first_three\"] = df[numeric_cols[:3]].sum(axis=1)\n    if\
+          \ \"mean radius\" in df.columns and \"mean perimeter\" in df.columns:\n\
+          \        denom = df[\"mean perimeter\"].replace(0, np.nan)\n        df[\"\
+          radius_perimeter_ratio\"] = df[\"mean radius\"] / denom\n        df[\"radius_perimeter_ratio\"\
+          ] = df[\"radius_perimeter_ratio\"].replace([np.inf, -np.inf], np.nan)\n\
+          \    if \"mean area\" in df.columns and \"mean radius\" in df.columns:\n\
+          \        denom = df[\"mean radius\"].replace(0, np.nan)\n        df[\"area_radius_ratio\"\
+          ] = df[\"mean area\"] / denom\n        df[\"area_radius_ratio\"] = df[\"\
+          area_radius_ratio\"].replace([np.inf, -np.inf], np.nan)\n    print(f\"Feature\
+          \ engineering complete. Shape: {df.shape}\")\n    df.to_csv(output_data.path,\
+          \ index=False)\n\n"
+        image: python:3.11
+        resources:
+          cpuLimit: 1.0
+          memoryLimit: 1.073741824
+          resourceCpuLimit: '1'
+          resourceMemoryLimit: 1Gi
+    exec-ingestion-op:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - ingestion_op
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'pandas' 'scikit-learn'\
+          \  &&  python3 -m pip install --quiet --no-warn-script-location 'kfp==2.16.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef ingestion_op(output_data: Output[Dataset]) -> None:\n    import\
+          \ pandas as pd\n    from sklearn.datasets import load_breast_cancer\n\n\
+          \    dataset = load_breast_cancer(as_frame=True)\n    df = dataset.frame.copy()\n\
+          \    if \"target\" not in df.columns:\n        raise ValueError(\"Breast\
+          \ cancer dataset missing target column\")\n    print(f\"Loaded breast cancer\
+          \ dataset with shape: {df.shape}\")\n    df.to_csv(output_data.path, index=False)\n\
+          \n"
+        image: python:3.11
+        resources:
+          cpuLimit: 1.0
+          memoryLimit: 1.073741824
+          resourceCpuLimit: '1'
+          resourceMemoryLimit: 1Gi
+    exec-pre-deploy-checks-op:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - pre_deploy_checks_op
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'joblib' 'numpy'\
+          \ 'psutil' 'scikit-learn' 'xgboost' 'lightgbm'  &&  python3 -m pip install\
+          \ --quiet --no-warn-script-location 'kfp==2.16.0' '--no-deps' 'typing-extensions>=3.7.4,<5;\
+          \ python_version<\"3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef pre_deploy_checks_op(\n    model: Input[Model],\n    max_size_mb:\
+          \ float = 50.0,\n) -> str:\n    import os\n    import time\n    import numpy\
+          \ as np\n    import joblib\n    import psutil\n\n    size_bytes = os.path.getsize(model.path)\n\
+          \    size_mb = size_bytes / (1024 * 1024)\n    if size_mb > max_size_mb:\n\
+          \        raise RuntimeError(f\"Model too large: {size_mb:.2f} MB > {max_size_mb}\
+          \ MB\")\n\n    calib = joblib.load(model.path)\n    clf = calib[\"model\"\
+          ]\n    n_features = getattr(clf, \"n_features_in_\", 30)\n    dummy = np.random.randn(1,\
+          \ n_features)\n    start = time.perf_counter()\n    _ = clf.predict(dummy)\n\
+          \    latency_ms = (time.perf_counter() - start) * 1000\n\n    mem_mb = psutil.Process().memory_info().rss\
+          \ / (1024 * 1024)\n    print(f\"Pre-deploy checks: size={size_mb:.2f} MB,\
+          \ latency={latency_ms:.2f} ms, memory={mem_mb:.1f} MB\")\n    return f\"\
+          Checks passed: size {size_mb:.2f} MB, latency {latency_ms:.2f} ms\"\n\n"
+        image: python:3.11
+        resources:
+          cpuLimit: 1.0
+          memoryLimit: 1.073741824
+          resourceCpuLimit: '1'
+          resourceMemoryLimit: 1Gi
+    exec-preprocess-op:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - preprocess_op
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'pandas' 'numpy'\
+          \  &&  python3 -m pip install --quiet --no-warn-script-location 'kfp==2.16.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef preprocess_op(\n    train_data: Input[Dataset],\n    cal_data:\
+          \ Input[Dataset],\n    test_data: Input[Dataset],\n    processed_train_data:\
+          \ Output[Dataset],\n    processed_cal_data: Output[Dataset],\n    processed_test_data:\
+          \ Output[Dataset],\n    high_cardinality_threshold: int = 50,\n) -> None:\n\
+          \    import numpy as np\n    import pandas as pd\n\n    def preprocess_single(df,\
+          \ target_col, fit=False, median_vals=None, cat_mappings=None):\n       \
+          \ y = df[target_col].copy()\n        X = df.drop(columns=[target_col]).copy()\n\
+          \        num_cols = [c for c in X.columns if pd.api.types.is_numeric_dtype(X[c])]\n\
+          \        cat_cols = [c for c in X.columns if c not in num_cols]\n\n    \
+          \    if fit:\n            median_vals = {}\n            for col in num_cols:\n\
+          \                median_vals[col] = X[col].median()\n            cat_mappings\
+          \ = {}\n            for col in cat_cols:\n                X[col] = X[col].astype(\"\
+          object\").fillna(\"missing\")\n                nunique = X[col].nunique(dropna=False)\n\
+          \                if nunique > high_cardinality_threshold:\n            \
+          \        freq = X[col].value_counts(normalize=True)\n                  \
+          \  cat_mappings[col] = (\"freq\", freq)\n                else:\n       \
+          \             categories = list(X[col].astype(str).value_counts().index)\n\
+          \                    mapping = {v: i+1 for i, v in enumerate(categories)}\n\
+          \                    cat_mappings[col] = (\"code\", mapping)\n        #\
+          \ Apply\n        X_out = pd.DataFrame()\n        for col in num_cols:\n\
+          \            median = median_vals.get(col, X[col].median())\n          \
+          \  X_out[col] = X[col].fillna(median)\n            missing = X[col].isna().astype(int)\n\
+          \            X_out[f\"{col}_missing\"] = missing\n        for col in cat_cols:\n\
+          \            X[col] = X[col].astype(\"object\").fillna(\"missing\")\n  \
+          \          mtype, mapping = cat_mappings[col]\n            if mtype == \"\
+          freq\":\n                X_out[f\"{col}_freq\"] = X[col].map(mapping).fillna(0.0)\n\
+          \            else:\n                X_out[f\"{col}_code\"] = X[col].astype(str).map(mapping).fillna(0).astype(int)\n\
+          \        return X_out, y, median_vals, cat_mappings\n\n    target_col =\
+          \ \"target\"\n    train_df = pd.read_csv(train_data.path, low_memory=False)\n\
+          \    cal_df = pd.read_csv(cal_data.path, low_memory=False)\n    test_df\
+          \ = pd.read_csv(test_data.path, low_memory=False)\n\n    X_train, y_train,\
+          \ median_vals, cat_mappings = preprocess_single(train_df, target_col, fit=True)\n\
+          \    X_cal, y_cal, _, _ = preprocess_single(cal_df, target_col, fit=False,\
+          \ median_vals=median_vals, cat_mappings=cat_mappings)\n    X_test, y_test,\
+          \ _, _ = preprocess_single(test_df, target_col, fit=False, median_vals=median_vals,\
+          \ cat_mappings=cat_mappings)\n\n    train_out = pd.concat([X_train, y_train],\
+          \ axis=1)\n    cal_out = pd.concat([X_cal, y_cal], axis=1)\n    test_out\
+          \ = pd.concat([X_test, y_test], axis=1)\n\n    train_out = train_out.replace([np.inf,\
+          \ -np.inf], np.nan).fillna(0)\n    cal_out = cal_out.replace([np.inf, -np.inf],\
+          \ np.nan).fillna(0)\n    test_out = test_out.replace([np.inf, -np.inf],\
+          \ np.nan).fillna(0)\n\n    train_out.to_csv(processed_train_data.path, index=False)\n\
+          \    cal_out.to_csv(processed_cal_data.path, index=False)\n    test_out.to_csv(processed_test_data.path,\
+          \ index=False)\n\n"
+        image: python:3.11
+        resources:
+          cpuLimit: 1.0
+          memoryLimit: 2.147483648
+          resourceCpuLimit: '1'
+          resourceMemoryLimit: 2Gi
+    exec-select-best-model-op:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - select_best_model_op
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.16.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef select_best_model_op(\n    model_1: Input[Model], recall_1: float,\
+          \ auc_1: float, cost_1: float,\n    model_2: Input[Model], recall_2: float,\
+          \ auc_2: float, cost_2: float,\n    model_3: Input[Model], recall_3: float,\
+          \ auc_3: float, cost_3: float,\n    model_4: Input[Model], recall_4: float,\
+          \ auc_4: float, cost_4: float,\n    model_5: Input[Model], recall_5: float,\
+          \ auc_5: float, cost_5: float,\n    selected_model: Output[Model],\n) ->\
+          \ NamedTuple(\"Selection\", [(\"best_model_name\", str), (\"best_recall\"\
+          , float), (\"best_auc\", float), (\"best_business_cost\", float)]):\n  \
+          \  import shutil\n    candidates = [\n        {\"name\": \"train_1 (XGBoost\
+          \ standard)\", \"path\": model_1.path, \"recall\": recall_1, \"auc\": auc_1,\
+          \ \"cost\": cost_1},\n        {\"name\": \"train_2 (XGBoost cost-sensitive)\"\
+          , \"path\": model_2.path, \"recall\": recall_2, \"auc\": auc_2, \"cost\"\
+          : cost_2},\n        {\"name\": \"train_3 (XGBoost SMOTE)\", \"path\": model_3.path,\
+          \ \"recall\": recall_3, \"auc\": auc_3, \"cost\": cost_3},\n        {\"\
+          name\": \"train_4 (LightGBM cost-sensitive)\", \"path\": model_4.path, \"\
+          recall\": recall_4, \"auc\": auc_4, \"cost\": cost_4},\n        {\"name\"\
+          : \"train_5 (Hybrid RF + FS)\", \"path\": model_5.path, \"recall\": recall_5,\
+          \ \"auc\": auc_5, \"cost\": cost_5},\n    ]\n    best = sorted(candidates,\
+          \ key=lambda x: (-x[\"recall\"], x[\"cost\"], -x[\"auc\"]))[0]\n    shutil.copy2(best[\"\
+          path\"], selected_model.path)\n    print(f\"Best model selected: {best['name']}\
+          \ | recall={best['recall']:.4f} | auc={best['auc']:.4f} | cost={best['cost']:.2f}\"\
+          )\n    return (best[\"name\"], float(best[\"recall\"]), float(best[\"auc\"\
+          ]), float(best[\"cost\"]))\n\n"
+        image: python:3.11
+        resources:
+          cpuLimit: 1.0
+          memoryLimit: 1.073741824
+          resourceCpuLimit: '1'
+          resourceMemoryLimit: 1Gi
+    exec-split-calibration-op:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - split_calibration_op
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'pandas' 'scikit-learn'\
+          \  &&  python3 -m pip install --quiet --no-warn-script-location 'kfp==2.16.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef split_calibration_op(\n    data: Input[Dataset],\n    train_data:\
+          \ Output[Dataset],\n    cal_data: Output[Dataset],\n    test_data: Output[Dataset],\n\
+          \    train_frac: float = 0.6,\n    cal_frac: float = 0.2,\n    random_state:\
+          \ int = 42,\n) -> None:\n    import pandas as pd\n    from sklearn.model_selection\
+          \ import train_test_split\n\n    target_col = \"target\"\n    df = pd.read_csv(data.path,\
+          \ low_memory=False)\n    if target_col not in df.columns:\n        raise\
+          \ ValueError(f\"Missing target column: {target_col}\")\n\n    train_df,\
+          \ temp_df = train_test_split(\n        df, test_size=(1 - train_frac), random_state=random_state,\
+          \ stratify=df[target_col]\n    )\n    test_frac = 1 - train_frac - cal_frac\n\
+          \    cal_df, test_df = train_test_split(\n        temp_df, test_size=test_frac\
+          \ / (cal_frac + test_frac), random_state=random_state,\n        stratify=temp_df[target_col]\n\
+          \    )\n    print(f\"Split complete. Train shape: {train_df.shape}, Cal\
+          \ shape: {cal_df.shape}, Test shape: {test_df.shape}\")\n    train_df.to_csv(train_data.path,\
+          \ index=False)\n    cal_df.to_csv(cal_data.path, index=False)\n    test_df.to_csv(test_data.path,\
+          \ index=False)\n\n"
+        image: python:3.11
+        resources:
+          cpuLimit: 1.0
+          memoryLimit: 1.073741824
+          resourceCpuLimit: '1'
+          resourceMemoryLimit: 1Gi
+    exec-train-1:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - train_1
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'pandas' 'scikit-learn'\
+          \ 'xgboost' 'joblib'  &&  python3 -m pip install --quiet --no-warn-script-location\
+          \ 'kfp==2.16.0' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
+          3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef train_1(data: Input[Dataset], model: Output[Model]) -> None:\n\
+          \    \"\"\"Train XGBoost (standard)\"\"\"\n    import joblib\n    import\
+          \ pandas as pd\n    from xgboost import XGBClassifier\n\n    target_col\
+          \ = \"target\"\n    df = pd.read_csv(data.path, low_memory=False)\n    y\
+          \ = df[target_col]\n    X = df.drop(columns=[target_col])\n    clf = XGBClassifier(\n\
+          \        n_estimators=150, max_depth=4, learning_rate=0.08,\n        subsample=0.9,\
+          \ colsample_bytree=0.8, eval_metric=\"logloss\",\n        tree_method=\"\
+          hist\", random_state=42, n_jobs=-1,\n    )\n    clf.fit(X, y)\n    joblib.dump(clf,\
+          \ model.path)\n\n"
+        image: python:3.11
+        resources:
+          cpuLimit: 1.0
+          memoryLimit: 2.147483648
+          resourceCpuLimit: '1'
+          resourceMemoryLimit: 2Gi
+    exec-train-2:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - train_2
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'pandas' 'scikit-learn'\
+          \ 'xgboost' 'joblib'  &&  python3 -m pip install --quiet --no-warn-script-location\
+          \ 'kfp==2.16.0' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
+          3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef train_2(data: Input[Dataset], model: Output[Model]) -> None:\n\
+          \    \"\"\"Train XGBoost cost-sensitive\"\"\"\n    import joblib\n    import\
+          \ pandas as pd\n    from xgboost import XGBClassifier\n\n    target_col\
+          \ = \"target\"\n    df = pd.read_csv(data.path, low_memory=False)\n    y\
+          \ = df[target_col]\n    X = df.drop(columns=[target_col])\n    pos = int(y.sum())\n\
+          \    neg = int(len(y) - pos)\n    scale_pos_weight = neg / max(pos, 1)\n\
+          \    clf = XGBClassifier(\n        n_estimators=180, max_depth=4, learning_rate=0.08,\n\
+          \        subsample=0.9, colsample_bytree=0.8, scale_pos_weight=scale_pos_weight,\n\
+          \        eval_metric=\"logloss\", tree_method=\"hist\", random_state=42,\
+          \ n_jobs=-1,\n    )\n    clf.fit(X, y)\n    joblib.dump(clf, model.path)\n\
+          \n"
+        image: python:3.11
+        resources:
+          cpuLimit: 1.0
+          memoryLimit: 2.147483648
+          resourceCpuLimit: '1'
+          resourceMemoryLimit: 2Gi
+    exec-train-3:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - train_3
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'pandas' 'scikit-learn'\
+          \ 'xgboost' 'imbalanced-learn' 'joblib'  &&  python3 -m pip install --quiet\
+          \ --no-warn-script-location 'kfp==2.16.0' '--no-deps' 'typing-extensions>=3.7.4,<5;\
+          \ python_version<\"3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef train_3(data: Input[Dataset], model: Output[Model]) -> None:\n\
+          \    \"\"\"Train XGBoost with SMOTE oversampling\"\"\"\n    import joblib\n\
+          \    import pandas as pd\n    from imblearn.over_sampling import SMOTE\n\
+          \    from xgboost import XGBClassifier\n\n    target_col = \"target\"\n\
+          \    df = pd.read_csv(data.path, low_memory=False)\n    y = df[target_col]\n\
+          \    X = df.drop(columns=[target_col])\n    minority_count = int(y.value_counts().min())\n\
+          \    if minority_count >= 2:\n        k_neighbors = min(5, minority_count\
+          \ - 1)\n        smote = SMOTE(random_state=42, k_neighbors=k_neighbors)\n\
+          \        X_res, y_res = smote.fit_resample(X, y)\n    else:\n        X_res,\
+          \ y_res = X, y\n    clf = XGBClassifier(\n        n_estimators=150, max_depth=4,\
+          \ learning_rate=0.08,\n        subsample=0.9, colsample_bytree=0.8, eval_metric=\"\
+          logloss\",\n        tree_method=\"hist\", random_state=42, n_jobs=-1,\n\
+          \    )\n    clf.fit(X_res, y_res)\n    joblib.dump(clf, model.path)\n\n"
+        image: python:3.11
+        resources:
+          cpuLimit: 1.0
+          memoryLimit: 2.147483648
+          resourceCpuLimit: '1'
+          resourceMemoryLimit: 2Gi
+    exec-train-4:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - train_4
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'pandas' 'scikit-learn'\
+          \ 'lightgbm' 'joblib'  &&  python3 -m pip install --quiet --no-warn-script-location\
+          \ 'kfp==2.16.0' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
+          3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef train_4(data: Input[Dataset], model: Output[Model]) -> None:\n\
+          \    \"\"\"Train LightGBM cost-sensitive\"\"\"\n    import joblib\n    import\
+          \ pandas as pd\n    from lightgbm import LGBMClassifier\n\n    target_col\
+          \ = \"target\"\n    df = pd.read_csv(data.path, low_memory=False)\n    y\
+          \ = df[target_col]\n    X = df.drop(columns=[target_col])\n    pos = int(y.sum())\n\
+          \    neg = int(len(y) - pos)\n    scale_pos_weight = neg / max(pos, 1)\n\
+          \    clf = LGBMClassifier(\n        n_estimators=200, max_depth=-1, learning_rate=0.05,\n\
+          \        subsample=0.9, colsample_bytree=0.8, scale_pos_weight=scale_pos_weight,\n\
+          \        random_state=42, n_jobs=-1,\n    )\n    clf.fit(X, y)\n    joblib.dump(clf,\
+          \ model.path)\n\n"
+        image: python:3.11
+        resources:
+          cpuLimit: 1.0
+          memoryLimit: 2.147483648
+          resourceCpuLimit: '1'
+          resourceMemoryLimit: 2Gi
+    exec-train-5:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - train_5
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'pandas' 'scikit-learn'\
+          \ 'joblib'  &&  python3 -m pip install --quiet --no-warn-script-location\
+          \ 'kfp==2.16.0' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
+          3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef train_5(data: Input[Dataset], model: Output[Model]) -> None:\n\
+          \    \"\"\"Train hybrid Random Forest with feature selection\"\"\"\n   \
+          \ import joblib\n    import pandas as pd\n    from sklearn.ensemble import\
+          \ RandomForestClassifier\n    from sklearn.feature_selection import SelectFromModel\n\
+          \    from sklearn.pipeline import Pipeline\n\n    target_col = \"target\"\
+          \n    df = pd.read_csv(data.path, low_memory=False)\n    y = df[target_col]\n\
+          \    X = df.drop(columns=[target_col])\n    selector_model = RandomForestClassifier(n_estimators=150,\
+          \ class_weight=\"balanced\", random_state=42, n_jobs=-1)\n    final_rf =\
+          \ RandomForestClassifier(n_estimators=250, class_weight=\"balanced\", random_state=42,\
+          \ n_jobs=-1)\n    hybrid = Pipeline([\n        (\"feature_selection\", SelectFromModel(selector_model,\
+          \ threshold=\"median\")),\n        (\"rf\", final_rf),\n    ])\n    hybrid.fit(X,\
+          \ y)\n    joblib.dump(hybrid, model.path)\n\n"
+        image: python:3.11
+        resources:
+          cpuLimit: 1.0
+          memoryLimit: 2.147483648
+          resourceCpuLimit: '1'
+          resourceMemoryLimit: 2Gi
+    exec-validation-op:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - validation_op
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'pandas' 'numpy'\
+          \  &&  python3 -m pip install --quiet --no-warn-script-location 'kfp==2.16.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef validation_op(data: Input[Dataset]) -> str:\n    import pandas\
+          \ as pd\n    target_col = \"target\"\n    df = pd.read_csv(data.path, low_memory=False)\n\
+          \    if df.empty:\n        raise ValueError(\"Dataset is empty\")\n    if\
+          \ target_col not in df.columns:\n        raise ValueError(f\"Missing target\
+          \ column: {target_col}\")\n    counts = df[target_col].value_counts(dropna=False)\n\
+          \    if len(counts) < 2:\n        raise ValueError(\"Target must contain\
+          \ both classes\")\n    if counts.min() < 2:\n        raise ValueError(\"\
+          Each class must have at least 2 rows\")\n    return f\"Validation passed:\
+          \ rows={len(df)}, cols={len(df.columns)}\"\n\n"
+        image: python:3.11
+        resources:
+          cpuLimit: 1.0
+          memoryLimit: 1.073741824
+          resourceCpuLimit: '1'
+          resourceMemoryLimit: 1Gi
+pipelineInfo:
+  description: End-to-end MLOps pipeline with 5 models, model selection, and conformal
+    prediction.
+  name: novel-conformal-ml-pipeline
+root:
+  dag:
+    tasks:
+      condition-1:
+        componentRef:
+          name: comp-condition-1
+        dependentTasks:
+        - conformal-calibration-op
+        - evaluate-conformal-op
+        inputs:
+          artifacts:
+            pipelinechannel--conformal-calibration-op-calibrated_model:
+              taskOutputArtifact:
+                outputArtifactKey: calibrated_model
+                producerTask: conformal-calibration-op
+          parameters:
+            pipelinechannel--coverage_threshold:
+              componentInputParameter: coverage_threshold
+            pipelinechannel--evaluate-conformal-op-avg_set_size:
+              taskOutputParameter:
+                outputParameterKey: avg_set_size
+                producerTask: evaluate-conformal-op
+            pipelinechannel--evaluate-conformal-op-coverage:
+              taskOutputParameter:
+                outputParameterKey: coverage
+                producerTask: evaluate-conformal-op
+        taskInfo:
+          name: condition-1
+        triggerPolicy:
+          condition: inputs.parameter_values['pipelinechannel--evaluate-conformal-op-coverage']
+            >= inputs.parameter_values['pipelinechannel--coverage_threshold']
+      conformal-calibration-op:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-conformal-calibration-op
+        dependentTasks:
+        - preprocess-op
+        - select-best-model-op
+        inputs:
+          artifacts:
+            cal_data:
+              taskOutputArtifact:
+                outputArtifactKey: processed_cal_data
+                producerTask: preprocess-op
+            model:
+              taskOutputArtifact:
+                outputArtifactKey: selected_model
+                producerTask: select-best-model-op
+          parameters:
+            alpha:
+              componentInputParameter: alpha
+        taskInfo:
+          name: conformal-calibration-op
+      evaluate-conformal-op:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-evaluate-conformal-op
+        dependentTasks:
+        - conformal-calibration-op
+        - preprocess-op
+        inputs:
+          artifacts:
+            calibrated_model:
+              taskOutputArtifact:
+                outputArtifactKey: calibrated_model
+                producerTask: conformal-calibration-op
+            test_data:
+              taskOutputArtifact:
+                outputArtifactKey: processed_test_data
+                producerTask: preprocess-op
+        taskInfo:
+          name: evaluate-conformal-op
+      evaluate-op:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-evaluate-op
+        dependentTasks:
+        - preprocess-op
+        - train-1
+        inputs:
+          artifacts:
+            data:
+              taskOutputArtifact:
+                outputArtifactKey: processed_test_data
+                producerTask: preprocess-op
+            model:
+              taskOutputArtifact:
+                outputArtifactKey: model
+                producerTask: train-1
+        taskInfo:
+          name: evaluate-op
+      evaluate-op-2:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-evaluate-op-2
+        dependentTasks:
+        - preprocess-op
+        - train-2
+        inputs:
+          artifacts:
+            data:
+              taskOutputArtifact:
+                outputArtifactKey: processed_test_data
+                producerTask: preprocess-op
+            model:
+              taskOutputArtifact:
+                outputArtifactKey: model
+                producerTask: train-2
+        taskInfo:
+          name: evaluate-op-2
+      evaluate-op-3:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-evaluate-op-3
+        dependentTasks:
+        - preprocess-op
+        - train-3
+        inputs:
+          artifacts:
+            data:
+              taskOutputArtifact:
+                outputArtifactKey: processed_test_data
+                producerTask: preprocess-op
+            model:
+              taskOutputArtifact:
+                outputArtifactKey: model
+                producerTask: train-3
+        taskInfo:
+          name: evaluate-op-3
+      evaluate-op-4:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-evaluate-op-4
+        dependentTasks:
+        - preprocess-op
+        - train-4
+        inputs:
+          artifacts:
+            data:
+              taskOutputArtifact:
+                outputArtifactKey: processed_test_data
+                producerTask: preprocess-op
+            model:
+              taskOutputArtifact:
+                outputArtifactKey: model
+                producerTask: train-4
+        taskInfo:
+          name: evaluate-op-4
+      evaluate-op-5:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-evaluate-op-5
+        dependentTasks:
+        - preprocess-op
+        - train-5
+        inputs:
+          artifacts:
+            data:
+              taskOutputArtifact:
+                outputArtifactKey: processed_test_data
+                producerTask: preprocess-op
+            model:
+              taskOutputArtifact:
+                outputArtifactKey: model
+                producerTask: train-5
+        taskInfo:
+          name: evaluate-op-5
+      feature-op:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-feature-op
+        dependentTasks:
+        - ingestion-op
+        - validation-op
+        inputs:
+          artifacts:
+            data:
+              taskOutputArtifact:
+                outputArtifactKey: output_data
+                producerTask: ingestion-op
+        taskInfo:
+          name: feature-op
+      ingestion-op:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-ingestion-op
+        retryPolicy:
+          backoffDuration: 0s
+          backoffFactor: 2.0
+          backoffMaxDuration: 3600s
+          maxRetryCount: 2
+        taskInfo:
+          name: ingestion-op
+      preprocess-op:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-preprocess-op
+        dependentTasks:
+        - split-calibration-op
+        inputs:
+          artifacts:
+            cal_data:
+              taskOutputArtifact:
+                outputArtifactKey: cal_data
+                producerTask: split-calibration-op
+            test_data:
+              taskOutputArtifact:
+                outputArtifactKey: test_data
+                producerTask: split-calibration-op
+            train_data:
+              taskOutputArtifact:
+                outputArtifactKey: train_data
+                producerTask: split-calibration-op
+        retryPolicy:
+          backoffDuration: 0s
+          backoffFactor: 2.0
+          backoffMaxDuration: 3600s
+          maxRetryCount: 2
+        taskInfo:
+          name: preprocess-op
+      select-best-model-op:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-select-best-model-op
+        dependentTasks:
+        - evaluate-op
+        - evaluate-op-2
+        - evaluate-op-3
+        - evaluate-op-4
+        - evaluate-op-5
+        - train-1
+        - train-2
+        - train-3
+        - train-4
+        - train-5
+        inputs:
+          artifacts:
+            model_1:
+              taskOutputArtifact:
+                outputArtifactKey: model
+                producerTask: train-1
+            model_2:
+              taskOutputArtifact:
+                outputArtifactKey: model
+                producerTask: train-2
+            model_3:
+              taskOutputArtifact:
+                outputArtifactKey: model
+                producerTask: train-3
+            model_4:
+              taskOutputArtifact:
+                outputArtifactKey: model
+                producerTask: train-4
+            model_5:
+              taskOutputArtifact:
+                outputArtifactKey: model
+                producerTask: train-5
+          parameters:
+            auc_1:
+              taskOutputParameter:
+                outputParameterKey: auc_roc
+                producerTask: evaluate-op
+            auc_2:
+              taskOutputParameter:
+                outputParameterKey: auc_roc
+                producerTask: evaluate-op-2
+            auc_3:
+              taskOutputParameter:
+                outputParameterKey: auc_roc
+                producerTask: evaluate-op-3
+            auc_4:
+              taskOutputParameter:
+                outputParameterKey: auc_roc
+                producerTask: evaluate-op-4
+            auc_5:
+              taskOutputParameter:
+                outputParameterKey: auc_roc
+                producerTask: evaluate-op-5
+            cost_1:
+              taskOutputParameter:
+                outputParameterKey: business_cost
+                producerTask: evaluate-op
+            cost_2:
+              taskOutputParameter:
+                outputParameterKey: business_cost
+                producerTask: evaluate-op-2
+            cost_3:
+              taskOutputParameter:
+                outputParameterKey: business_cost
+                producerTask: evaluate-op-3
+            cost_4:
+              taskOutputParameter:
+                outputParameterKey: business_cost
+                producerTask: evaluate-op-4
+            cost_5:
+              taskOutputParameter:
+                outputParameterKey: business_cost
+                producerTask: evaluate-op-5
+            recall_1:
+              taskOutputParameter:
+                outputParameterKey: recall
+                producerTask: evaluate-op
+            recall_2:
+              taskOutputParameter:
+                outputParameterKey: recall
+                producerTask: evaluate-op-2
+            recall_3:
+              taskOutputParameter:
+                outputParameterKey: recall
+                producerTask: evaluate-op-3
+            recall_4:
+              taskOutputParameter:
+                outputParameterKey: recall
+                producerTask: evaluate-op-4
+            recall_5:
+              taskOutputParameter:
+                outputParameterKey: recall
+                producerTask: evaluate-op-5
+        retryPolicy:
+          backoffDuration: 0s
+          backoffFactor: 2.0
+          backoffMaxDuration: 3600s
+          maxRetryCount: 2
+        taskInfo:
+          name: select-best-model-op
+      split-calibration-op:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-split-calibration-op
+        dependentTasks:
+        - feature-op
+        inputs:
+          artifacts:
+            data:
+              taskOutputArtifact:
+                outputArtifactKey: output_data
+                producerTask: feature-op
+          parameters:
+            cal_frac:
+              runtimeValue:
+                constant: 0.2
+            train_frac:
+              runtimeValue:
+                constant: 0.6
+        retryPolicy:
+          backoffDuration: 0s
+          backoffFactor: 2.0
+          backoffMaxDuration: 3600s
+          maxRetryCount: 2
+        taskInfo:
+          name: split-calibration-op
+      train-1:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-train-1
+        dependentTasks:
+        - preprocess-op
+        inputs:
+          artifacts:
+            data:
+              taskOutputArtifact:
+                outputArtifactKey: processed_train_data
+                producerTask: preprocess-op
+        retryPolicy:
+          backoffDuration: 0s
+          backoffFactor: 2.0
+          backoffMaxDuration: 3600s
+          maxRetryCount: 2
+        taskInfo:
+          name: train-1
+      train-2:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-train-2
+        dependentTasks:
+        - preprocess-op
+        inputs:
+          artifacts:
+            data:
+              taskOutputArtifact:
+                outputArtifactKey: processed_train_data
+                producerTask: preprocess-op
+        retryPolicy:
+          backoffDuration: 0s
+          backoffFactor: 2.0
+          backoffMaxDuration: 3600s
+          maxRetryCount: 2
+        taskInfo:
+          name: train-2
+      train-3:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-train-3
+        dependentTasks:
+        - preprocess-op
+        inputs:
+          artifacts:
+            data:
+              taskOutputArtifact:
+                outputArtifactKey: processed_train_data
+                producerTask: preprocess-op
+        retryPolicy:
+          backoffDuration: 0s
+          backoffFactor: 2.0
+          backoffMaxDuration: 3600s
+          maxRetryCount: 2
+        taskInfo:
+          name: train-3
+      train-4:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-train-4
+        dependentTasks:
+        - preprocess-op
+        inputs:
+          artifacts:
+            data:
+              taskOutputArtifact:
+                outputArtifactKey: processed_train_data
+                producerTask: preprocess-op
+        retryPolicy:
+          backoffDuration: 0s
+          backoffFactor: 2.0
+          backoffMaxDuration: 3600s
+          maxRetryCount: 2
+        taskInfo:
+          name: train-4
+      train-5:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-train-5
+        dependentTasks:
+        - preprocess-op
+        inputs:
+          artifacts:
+            data:
+              taskOutputArtifact:
+                outputArtifactKey: processed_train_data
+                producerTask: preprocess-op
+        retryPolicy:
+          backoffDuration: 0s
+          backoffFactor: 2.0
+          backoffMaxDuration: 3600s
+          maxRetryCount: 2
+        taskInfo:
+          name: train-5
+      validation-op:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-validation-op
+        dependentTasks:
+        - ingestion-op
+        inputs:
+          artifacts:
+            data:
+              taskOutputArtifact:
+                outputArtifactKey: output_data
+                producerTask: ingestion-op
+        taskInfo:
+          name: validation-op
+  inputDefinitions:
+    parameters:
+      alpha:
+        defaultValue: 0.05
+        isOptional: true
+        parameterType: NUMBER_DOUBLE
+      auc_threshold:
+        defaultValue: 0.85
+        isOptional: true
+        parameterType: NUMBER_DOUBLE
+      coverage_threshold:
+        defaultValue: 0.9
+        isOptional: true
+        parameterType: NUMBER_DOUBLE
+      recall_threshold:
+        defaultValue: 0.8
+        isOptional: true
+        parameterType: NUMBER_DOUBLE
+schemaVersion: 2.1.0
+sdkVersion: kfp-2.16.0

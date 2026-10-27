@@ -1,0 +1,14 @@
+artifact_uri: file:C:\Users\Sufyan\Documents\MLOPS_project\model\mlruns/305234878293809594/2ad5ada4a9d24145a148169af3c8a526/artifacts
+end_time: 1777285731708
+entry_point_name: ''
+experiment_id: '305234878293809594'
+lifecycle_stage: active
+run_id: 2ad5ada4a9d24145a148169af3c8a526
+run_name: random_forest
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1777285728958
+status: 3
+tags: []
+user_id: Sufyan

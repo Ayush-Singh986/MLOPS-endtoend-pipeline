@@ -1,0 +1,61 @@
+name: MLOps CI-CD Pipeline
+
+on:
+  push:
+    branches: ["main"]
+
+jobs:
+  build-train-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # -----------------------
+      # Checkout repo
+      # -----------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # -----------------------
+      # Setup Python
+      # -----------------------
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # -----------------------
+      # Install dependencies
+      # -----------------------
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r model/requirements.txt
+
+      # -----------------------
+      # Train model
+      # -----------------------
+      - name: Train model
+        run: |
+          cd model
+          python train.py
+
+      # -----------------------
+      # Build Docker image
+      # -----------------------
+      - name: Build Docker image
+        run: |
+          docker build -t breast-cancer-api -f docker/Dockerfile .
+
+      # -----------------------
+      # Docker login (SECURE)
+      # -----------------------
+      - name: Login to Docker Hub
+        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
+      # -----------------------
+      # Tag + Push image
+      # -----------------------
+      - name: Push Docker image
+        run: |
+          docker tag breast-cancer-api ${{ secrets.DOCKER_USERNAME }}/breast-cancer-api:latest
+          docker push ${{ secrets.DOCKER_USERNAME }}/breast-cancer-api:latest

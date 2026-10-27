@@ -1,0 +1,10 @@
+artifact_location: file:C:\Users\Sufyan\Documents\MLOPS_project\model\mlruns/305234878293809594/models/m-d64529008eb84ca9909d1b1b18ff4742/artifacts
+creation_timestamp: 1777285734258
+experiment_id: '305234878293809594'
+last_updated_timestamp: 1777285736309
+model_id: m-d64529008eb84ca9909d1b1b18ff4742
+model_type: null
+name: model
+source_run_id: db81e435a8ac43cdb288095cf2d534a5
+status: 2
+status_message: null

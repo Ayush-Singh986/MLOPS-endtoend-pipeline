@@ -1,0 +1,63 @@
+groups:
+  - name: ml-model-alerts
+    rules:
+
+      # 🔴 Model accuracy too low
+      - alert: LowModelAccuracy
+        expr: model_accuracy < 0.85
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Model accuracy dropped below threshold"
+          description: "Accuracy is {{ $value }}, which is below 0.85"
+
+      # 🔴 High feature drift
+      - alert: HighFeatureDrift
+        expr: feature_drift_score > 50
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Feature drift detected"
+          description: "Drift score is {{ $value }}, indicating data shift"
+
+      # 🔴 Too many false positives
+      - alert: HighFalsePositives
+        expr: increase(false_positives_total[5m]) > 10
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High false positive rate"
+          description: "More than 10 false positives in last 5 minutes"
+
+      # 🔴 Too many false negatives (dangerous in medical ML)
+      - alert: HighFalseNegatives
+        expr: increase(false_negatives_total[5m]) > 5
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High false negatives (missed cancer cases)"
+          description: "More than 5 FN in last 5 minutes"
+
+      # 🟠 No predictions happening (pipeline stuck)
+      - alert: NoPredictions
+        expr: increase(predictions_total[5m]) == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Model not receiving traffic"
+          description: "No predictions in last 5 minutes"
+
+      # 🟡 Model bias warning (imbalanced predictions)
+      - alert: PredictionBias
+        expr: positive_prediction_rate > 0.95 or positive_prediction_rate < 0.05
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Severe prediction imbalance"
+          description: "Model is heavily biased toward one class"
