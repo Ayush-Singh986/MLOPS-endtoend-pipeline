@@ -120,6 +120,39 @@ The Dockerfile packages the API with Waitress, runs it as a non-root user, and i
 
 The API exports Prometheus request metrics at `/metrics`, protected by `X-Metrics-API-Key`. The repository's Kubernetes, Prometheus, and Grafana deployment files still need configuration before they can be used as a monitoring stack. The separate `model/drift_check.py` script demonstrates an offline comparison of dataset subsets; it does not detect live feature drift.
 
+### Run the container directly on Ubuntu with Docker
+
+The API container intentionally exits during startup unless `API_KEY` is provided with at least 32 characters. Setting a variable in your SSH shell does not pass it into a container; provide secrets when creating the container. Do not bake keys into the Docker image or commit them to Git.
+
+Generate and store separate keys in a private environment file on the server:
+
+```bash
+mkdir -p "$HOME/.config/mlops-api"
+chmod 700 "$HOME/.config/mlops-api"
+umask 077
+{
+  printf 'API_KEY='
+  openssl rand -hex 32
+  printf 'METRICS_API_KEY='
+  openssl rand -hex 32
+} > "$HOME/.config/mlops-api/api.env"
+chmod 600 "$HOME/.config/mlops-api/api.env"
+```
+
+After authenticating Docker to ECR and pulling or building the image, recreate the container with that file. Replace the image URI/tag with the one you pushed:
+
+```bash
+docker rm -f mlops-api 2>/dev/null || true
+docker run -d \
+  --name mlops-api \
+  --restart unless-stopped \
+  --env-file "$HOME/.config/mlops-api/api.env" \
+  -p 127.0.0.1:5000:5000 \
+  308054410353.dkr.ecr.us-east-1.amazonaws.com/mlops-endtoend-pipeline:v1
+```
+
+The example binds the API only to the server's loopback interface. Verify startup on the server with `docker ps`, `docker logs --tail=50 mlops-api`, and `curl -fsS http://127.0.0.1:5000/health/ready`. To access it remotely, use an SSH tunnel or a properly configured reverse proxy; do not expose port 5000 to the public internet. If you choose a different network binding, restrict inbound access in the host firewall/security group to trusted sources.
+
 ## Deploy to AWS (ECR + ECS Fargate)
 
 This walkthrough deploys the prediction API as a container on **Amazon ECS with AWS Fargate**. **Amazon ECR** stores the Docker image, an **Application Load Balancer (ALB)** receives HTTPS traffic, and **AWS Secrets Manager** supplies credentials. This deploys the API only; it does not run the Kubeflow pipeline.
