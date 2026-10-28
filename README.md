@@ -43,6 +43,19 @@ py -3.11 -m venv .venv
 pip install -r model\requirements.txt
 ```
 
+On Ubuntu/Linux, use the equivalent commands below from the repository root (do not use the PowerShell commands above):
+
+```bash
+python3.11 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r model/requirements.txt
+cd model
+python train.py
+```
+
+If you already have the project virtual environment activated, skip creating and activating it again; from the repository root, install dependencies with `python -m pip install -r model/requirements.txt`, then run `cd model && python train.py`.
+
 Train models and save the selected model:
 
 ```powershell
@@ -53,6 +66,12 @@ python train.py
 View the MLflow runs (from the `model` directory):
 
 ```powershell
+mlflow ui --backend-store-uri sqlite:///mlflow.db --host 127.0.0.1 --port 5001
+```
+
+On Ubuntu/Linux, run the same MLflow UI command from the `model` directory:
+
+```bash
 mlflow ui --backend-store-uri sqlite:///mlflow.db --host 127.0.0.1 --port 5001
 ```
 
