@@ -18,10 +18,19 @@ from xgboost import XGBClassifier
 # USE A DATABASE-BACKED MLflow TRACKING STORE
 # -----------------------------
 BASE_DIR = Path(__file__).resolve().parent
-MLFLOW_DB = BASE_DIR / "mlflow.db"
+MLFLOW_DIR = BASE_DIR / ".mlflow"
+MLFLOW_DIR.mkdir(parents=True, exist_ok=True)
+MLFLOW_DB = MLFLOW_DIR / "tracking.db"
+MLFLOW_ARTIFACTS = MLFLOW_DIR / "artifacts"
 
 mlflow.set_tracking_uri(f"sqlite:///{MLFLOW_DB.as_posix()}")
-mlflow.set_experiment("breast_cancer_classification")
+experiment_name = "breast_cancer_classification"
+if mlflow.get_experiment_by_name(experiment_name) is None:
+    mlflow.create_experiment(
+        experiment_name,
+        artifact_location=MLFLOW_ARTIFACTS.as_uri(),
+    )
+mlflow.set_experiment(experiment_name)
 
 # -----------------------------
 # LOAD DATA
