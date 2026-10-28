@@ -2,6 +2,7 @@ from pathlib import Path
 
 import mlflow
 import mlflow.sklearn
+import mlflow.xgboost
 
 import numpy as np
 import joblib
@@ -78,12 +79,15 @@ for name, model in models.items():
         mlflow.log_metric("recall", rec)
         mlflow.log_metric("f1_score", f1)
 
-        # Log model
-        mlflow.sklearn.log_model(
-            model,
-            name="model",
-            skops_trusted_types=["sklearn.tree._tree.Tree"],
-        )
+        # Use each framework's native MLflow flavor for model serialization.
+        if isinstance(model, XGBClassifier):
+            mlflow.xgboost.log_model(model, name="model")
+        else:
+            mlflow.sklearn.log_model(
+                model,
+                name="model",
+                skops_trusted_types=["sklearn.tree._tree.Tree"],
+            )
 
         print(f"{name} -> Accuracy: {acc}")
 
