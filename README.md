@@ -15,7 +15,7 @@ This project demonstrates how a machine-learning model can move from data and tr
 1. **Load the data** — `model/train.py` loads the breast-cancer dataset directly from scikit-learn. Each record has 30 numeric measurements and a binary target.
 2. **Split into train and test sets** — The script uses an 80/20 split with a fixed random seed, making the experiment repeatable.
 3. **Train candidate models** — It fits Random Forest, Logistic Regression, and XGBoost classifiers using the same training data.
-4. **Evaluate and track experiments** — For each model, it calculates accuracy, precision, recall, and F1 score on the test set. MLflow records these metrics, the model name, and the trained model artifact in `model/mlruns`.
+4. **Evaluate and track experiments** — For each model, it calculates accuracy, precision, recall, and F1 score on the test set. MLflow records these metrics, the model name, and the trained model artifact in the SQLite database `model/mlflow.db`.
 5. **Choose and save a model** — The script selects the model with the highest test accuracy and saves it to `model/model.pkl`.
 6. **Serve predictions** — `model/predict.py` loads that saved model when the API starts. A client sends 30 measurements and an API key to `POST /predict`; the API returns the predicted class. Health endpoints are available separately and do not require authentication.
 
@@ -53,10 +53,12 @@ python train.py
 View the MLflow runs (from the `model` directory):
 
 ```powershell
-mlflow ui --backend-store-uri ./mlruns --host 127.0.0.1 --port 5001
+mlflow ui --backend-store-uri sqlite:///mlflow.db --host 127.0.0.1 --port 5001
 ```
 
 Open <http://127.0.0.1:5001> to compare the recorded metrics and model runs.
+
+The training script uses a SQLite tracking database because MLflow's local filesystem tracking backend is in maintenance mode. If you have older run history in `model/mlruns`, it remains there; use MLflow's `migrate-filestore` command to migrate it before expecting those runs in the SQLite UI.
 
 Configure an API key and start the production WSGI server from the `model` directory:
 

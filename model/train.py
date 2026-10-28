@@ -1,4 +1,5 @@
-import os
+from pathlib import Path
+
 import mlflow
 import mlflow.sklearn
 
@@ -14,12 +15,12 @@ from sklearn.linear_model import LogisticRegression
 from xgboost import XGBClassifier
 
 # -----------------------------
-# FORCE SINGLE MLflow LOCATION
+# USE A DATABASE-BACKED MLflow TRACKING STORE
 # -----------------------------
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MLFLOW_DIR = os.path.join(BASE_DIR, "mlruns")
+BASE_DIR = Path(__file__).resolve().parent
+MLFLOW_DB = BASE_DIR / "mlflow.db"
 
-mlflow.set_tracking_uri(f"file:{MLFLOW_DIR}")
+mlflow.set_tracking_uri(f"sqlite:///{MLFLOW_DB.as_posix()}")
 mlflow.set_experiment("breast_cancer_classification")
 
 # -----------------------------
