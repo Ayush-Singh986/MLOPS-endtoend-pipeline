@@ -104,6 +104,16 @@ $env:API_KEY = "test-api-key-that-is-at-least-32-characters"
 python -m unittest discover -s tests -v
 ```
 
+On Ubuntu/Linux, start at the repository root and use Bash commands (not PowerShell's `Set-Location`):
+
+```bash
+cd model
+export API_KEY="test-api-key-that-is-at-least-32-characters"
+python -m unittest discover -s tests -v
+```
+
+The tests are in `model/tests`, so running `python -m unittest discover -s tests -v` from the repository root points unittest at a directory that does not exist.
+
 ## Deployment and monitoring context
 
 The Dockerfile packages the API with Waitress, runs it as a non-root user, and includes a readiness health check. The separate CI GitHub Actions workflow trains the model and builds/pushes a Docker image to Docker Hub on pushes to `main` (Docker Hub credentials must be configured as repository secrets). The AWS ECS deployment workflow is described below and uses ECR instead.
