@@ -85,126 +85,259 @@ python -m unittest discover -s tests -v
 
 ## Deployment and monitoring context
 
-The Dockerfile packages the API with Waitress, runs it as a non-root user, and includes a readiness health check. The original GitHub Actions workflow trains the model and builds/pushes a Docker image to Docker Hub when code is pushed to `main` (Docker Hub credentials must be configured as repository secrets).
+The Dockerfile packages the API with Waitress, runs it as a non-root user, and includes a readiness health check. The separate CI GitHub Actions workflow trains the model and builds/pushes a Docker image to Docker Hub on pushes to `main` (Docker Hub credentials must be configured as repository secrets). The AWS ECS deployment workflow is described below and uses ECR instead.
 
 The API exports Prometheus request metrics at `/metrics`, protected by `X-Metrics-API-Key`. The repository's Kubernetes, Prometheus, and Grafana deployment files still need configuration before they can be used as a monitoring stack. The separate `model/drift_check.py` script demonstrates an offline comparison of dataset subsets; it does not detect live feature drift.
 
 ## Deploy to AWS (ECR + ECS Fargate)
 
-The project can run on **Amazon ECS Fargate**, with **Amazon ECR** storing the container image. This serves the API; it does not run the Kubeflow pipeline. AWS resources can incur charges; review pricing and delete resources when finished.
+This walkthrough deploys the prediction API as a container on **Amazon ECS with AWS Fargate**. **Amazon ECR** stores the Docker image, an **Application Load Balancer (ALB)** receives HTTPS traffic, and **AWS Secrets Manager** supplies credentials. This deploys the API only; it does not run the Kubeflow pipeline.
+
+> **Cost warning:** Fargate, an internet-facing ALB, NAT gateways, Redis, Secrets Manager, CloudWatch logs, and ECR can all incur charges. A NAT gateway and ALB have ongoing hourly charges. Check current AWS pricing, use a test account, and clean up resources after the exercise.
+
+> **Safety:** This is a learning deployment, not a production-ready medical service. Do not send real patient data or use predictions for clinical decisions. Never expose a Fargate task directly to the internet.
 
 ### 1. Prerequisites
 
-- An AWS account and AWS CLI v2 configured with credentials for creating ECR/ECS resources (`aws configure`).
-- Docker Desktop running with Linux containers enabled.
-- Python 3.11 and the project dependencies installed.
-- An AWS Region selected for all resources, such as `us-east-1`.
+- An AWS account where you are permitted to create IAM, VPC, ECR, ECS, ELB, ACM, Secrets Manager, and CloudWatch resources.
+- AWS CLI v2, Docker Desktop with Linux containers enabled, Git, and Python 3.11 installed.
+- A registered domain name whose DNS you can update. ACM must validate a domain before the ALB can serve trusted HTTPS.
+- One AWS Region for application resources, such as `us-east-1`. The ACM certificate for an ALB must be requested in the same Region.
+- A clone of this repository, with PowerShell open at the repository root.
 
-From the repository root, train the model before building the image. Training writes the selected model to `model/model.pkl`, which the Docker image needs at startup:
+If you are starting from a fresh machine, clone the repository first:
 
 ```powershell
-Set-Location model
-python train.py
-Set-Location ..
+git clone https://github.com/Ayush-Singh986/MLOPS-endtoend-pipeline.git
+Set-Location MLOPS-endtoend-pipeline
 ```
 
-### 2. Create an ECR repository and push the image
+For AWS CLI authentication, prefer the AWS IAM Identity Center profile your organization provides. Configure and sign in to that profile (follow the prompts for your SSO start URL, account, role, and Region):
 
-In PowerShell at the repository root, set the Region, then use AWS CLI to create a private ECR repository and retrieve your account ID:
+```powershell
+aws configure sso --profile mlops-demo
+aws sso login --profile mlops-demo
+$env:AWS_PROFILE = "mlops-demo"
+```
+
+If you already use another approved AWS credential method, continue with it; do not put access keys in the repository or container.
+
+Check your tools and AWS identity:
+
+```powershell
+aws --version
+docker version
+python --version
+aws sts get-caller-identity
+```
+
+Confirm the account and identity are correct before creating resources. Set values used by the following commands:
 
 ```powershell
 $Region = "us-east-1"
 $AccountId = aws sts get-caller-identity --query Account --output text
 $Repository = "breast-cancer-api"
-$ImageTag = "v1"
-$EcrUri = "$AccountId.dkr.ecr.$Region.amazonaws.com/$Repository"
-
-aws ecr create-repository --repository-name $Repository --region $Region
+$Cluster = "breast-cancer-cluster"
+$Service = "breast-cancer-api"
+$TaskFamily = "breast-cancer-api"
+$LogGroup = "/ecs/breast-cancer-api"
+$Domain = "api.example.com" # Replace with a DNS name you control
 ```
 
-If the repository already exists, the create command reports that; continue with the existing repository. Authenticate Docker, build the image from the repository root (the Dockerfile expects `model/` in the build context), then tag and push it:
+Replace example names and placeholders. Do not paste credentials, API keys, or patient data into source files, command history, screenshots, or GitHub.
+
+### 2. Train and test the application locally
+
+From the repository root, create a Python environment, install dependencies, train the model, and run the API tests:
+
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -r model\requirements.txt
+Set-Location model
+python train.py
+$env:API_KEY = "local-test-api-key-that-is-at-least-32-characters"
+python -m unittest discover -s tests -v
+Set-Location ..
+```
+
+Training writes `model/model.pkl`; the Docker build needs this file. The tests should finish successfully. The placeholder API key is for local testing only, not for AWS.
+
+### 3. Create and push the container image to ECR
+
+Create a **private** ECR repository. If it already exists, keep using it:
+
+```powershell
+$EcrUri = "$AccountId.dkr.ecr.$Region.amazonaws.com/$Repository"
+$ImageTag = "v1"
+aws ecr create-repository `
+  --repository-name $Repository `
+  --image-tag-mutability IMMUTABLE `
+  --image-scanning-configuration scanOnPush=true `
+  --region $Region
+```
+
+If AWS reports that the repository already exists, skip the create command and use the existing repository. Confirm it is in `$Region`.
+
+Log Docker in to ECR, then build, tag, and push the image from the repository root. The build context must be `.` because the Dockerfile copies files from `model\`:
 
 ```powershell
 aws ecr get-login-password --region $Region |
   docker login --username AWS --password-stdin "$AccountId.dkr.ecr.$Region.amazonaws.com"
-
-docker build --platform linux/amd64 -f docker\Dockerfile -t "${Repository}:$ImageTag" .
-docker tag "${Repository}:$ImageTag" "${EcrUri}:$ImageTag"
+docker build --platform linux/amd64 -f docker\Dockerfile -t "${EcrUri}:$ImageTag" .
 docker push "${EcrUri}:$ImageTag"
+aws ecr describe-images --repository-name $Repository --image-ids imageTag=$ImageTag --region $Region
 ```
 
-Use an immutable release tag such as `v1` rather than `latest` so task definitions can point to a specific image version.
+Use a unique version tag for each release. The repository is configured for immutable tags, so do not try to push a different image under an existing tag.
 
-### 3. Prepare ECS permissions and cluster
+### 4. Set up the VPC and security groups
 
-1. In the AWS Console, open **IAM → Roles** and create (or confirm) the ECS task execution role named `ecsTaskExecutionRole`, using the **Elastic Container Service Task** trusted entity and attaching the AWS-managed `AmazonECSTaskExecutionRolePolicy`. ECS uses this role to pull the private ECR image and write container logs. Add `secretsmanager:GetSecretValue` permission scoped to the specific API-key, metrics-key, and (if used) rate-limit-storage secret ARNs, plus `kms:Decrypt` for their customer-managed KMS key if applicable.
-2. Open **Amazon ECS → Clusters → Create cluster**. Choose the **AWS Fargate (serverless)** infrastructure option, give the cluster a name such as `breast-cancer-cluster`, and create it.
+Create a VPC with at least two Availability Zones. In the AWS Console, open **VPC → Create VPC → VPC and more** and configure:
 
-Do not put AWS credentials inside the image or application. The app itself does not need an AWS task role for its current inference behavior.
+1. Choose a name such as `breast-cancer-vpc` and select two Availability Zones.
+2. Create at least two public subnets and two private subnets (one of each in each AZ).
+3. Enable DNS hostnames and DNS resolution.
+4. Choose a NAT gateway for private-subnet outbound access, then create the VPC. NAT gateways incur ongoing charges. A more involved alternative is to create VPC endpoints for ECR (API and Docker), S3, CloudWatch Logs, and Secrets Manager.
+5. Confirm the public subnets route to the internet gateway, and private subnet routes send outbound traffic through the NAT gateway (or the required VPC endpoints).
 
-### 4. Create a Fargate task definition
+Create `breast-cancer-alb-sg` first, then `breast-cancer-task-sg` under **EC2 → Security Groups → Create security group**. Creating them in this order lets the task security group reference the ALB security group:
 
-In **ECS → Task definitions → Create new task definition**:
+| Security group | Inbound rules | Outbound |
+|---|---|---|
+| `breast-cancer-alb-sg` | TCP 443 from the internet (`0.0.0.0/0`); optionally TCP 80 from the internet only to redirect to HTTPS | Allow outbound TCP 5000 to the task security group |
+| `breast-cancer-task-sg` | TCP 5000 with source set to `breast-cancer-alb-sg` (select the security group as source, not a public CIDR) | Allow required outbound access, normally all outbound through the NAT gateway for this learning setup |
 
-1. Choose **AWS Fargate**, Linux/X86_64, and a task size such as **1 vCPU and 2 GB memory** for a small demo.
-2. Select `ecsTaskExecutionRole` as the **Task execution role**.
-3. Add a container named `breast-cancer-api` and set its image to the ECR URI with the tag you pushed, for example `<account-id>.dkr.ecr.us-east-1.amazonaws.com/breast-cancer-api:v1`.
-4. Configure a container port mapping for **TCP 5000**.
-5. Enable the `awslogs` log driver and select/create a CloudWatch Logs group (for example `/ecs/breast-cancer-api`) in the same Region.
-6. Configure a container health check with command `python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/health/ready', timeout=3)"`, interval 30 seconds, timeout 5 seconds, retries 3, and start period 30 seconds. Configure this in the task definition so ECS uses it for service health.
-7. Save the task definition.
+The task security group must not allow inbound traffic from the internet. ALB inbound access on 443 is public, but the service tasks themselves remain private. For a production environment, scope ALB inbound access to expected clients when possible and configure monitoring path access separately.
 
-The image starts Waitress and the API listens on port `5000`. Create secrets in AWS Secrets Manager and configure the task definition's container `secrets` entries to inject them as `API_KEY` and `METRICS_API_KEY`. Use a different strong value for each. Do not store keys as plaintext in the task definition or GitHub. For a service with more than one task, also inject `RATELIMIT_STORAGE_URI` from Secrets Manager, using a private, access-controlled Redis-compatible endpoint (for example, a TLS `rediss://` URI). Without that setting, each task has its own in-memory rate-limit counter.
+### 5. Request an HTTPS certificate and configure DNS
 
-### 5. Run the service
+1. Open **AWS Certificate Manager (ACM)** in the same Region as the ALB and choose **Request a certificate → Request a public certificate**.
+2. Enter the DNS name you control, for example `api.example.com`. Choose DNS validation and submit the request.
+3. In ACM, open the pending certificate and create its suggested DNS validation record in your DNS provider (or choose **Create records in Route 53** if the domain uses Route 53). If you have not set up Route 53, create a hosted zone for the domain and update the domain registrar's name servers to the values Route 53 provides. Wait until ACM reports **Issued**.
+4. Keep the certificate ARN; you will select it when creating the ALB HTTPS listener.
 
-Put the Fargate tasks in **private subnets with no public IP**. Do not allow direct internet access to task port `5000`. Create an internet-facing **Application Load Balancer (ALB)** in at least two public subnets, configure an HTTPS listener on port `443` with an AWS Certificate Manager (ACM) certificate, and add a target group of type **IP** on port **5000** with health-check path `/health/ready`. Allow inbound `443` on the ALB security group; allow inbound `5000` on the task security group **only from the ALB security group**. If HTTP is enabled, redirect it to HTTPS. For `/metrics`, keep access private to the monitoring network where possible; if it must pass through a public ALB, restrict that path to trusted monitoring source IPs with AWS WAF or equivalent network controls. The endpoint also requires `X-Metrics-API-Key`.
+The ALB's generated DNS name will not match a certificate issued for your custom domain. Create a DNS alias such as `api.example.com` pointing to the ALB after creating it. Without a domain you control, you cannot complete trusted public HTTPS using this ACM/ALB flow.
+
+### 6. Create application secrets and the execution role
+
+Create separate random values of at least 32 characters for the prediction and metrics keys. In **AWS Secrets Manager → Store a new secret**, choose **Other type of secret**, enter each value as plaintext, and create two secrets in the same Region, for example:
+
+- `breast-cancer-api/API_KEY`
+- `breast-cancer-api/METRICS_API_KEY`
+
+Generate each value with a trusted password manager or secret generator. Do not reuse the example value, commit keys, put them in the image, or enter them as regular task-definition environment variables. Save each secret ARN, and keep the values in your password manager so you can test the API later. The API uses `API_KEY` for `/predict`; `METRICS_API_KEY` protects `/metrics`.
+
+Create the ECS task execution role:
+
+1. Open **IAM → Roles → Create role**. Select **AWS service → Elastic Container Service → Elastic Container Service Task**, then continue.
+2. Attach the AWS-managed `AmazonECSTaskExecutionRolePolicy`.
+3. Name the role `ecsTaskExecutionRole` and create it.
+4. Open the role and add an inline permissions policy allowing `secretsmanager:GetSecretValue` on only the two secret ARNs created above. Replace the account ID and Region in this example with yours and confirm the resource names match the ARNs shown in Secrets Manager:
+
+   ```json
+   {
+     "Version": "2012-10-17",
+     "Statement": [{
+       "Effect": "Allow",
+       "Action": "secretsmanager:GetSecretValue",
+       "Resource": [
+         "arn:aws:secretsmanager:us-east-1:123456789012:secret:breast-cancer-api/API_KEY-*",
+         "arn:aws:secretsmanager:us-east-1:123456789012:secret:breast-cancer-api/METRICS_API_KEY-*"
+       ]
+     }]
+   }
+   ```
+
+   If you encrypt these secrets with a customer-managed KMS key, also grant `kms:Decrypt` on only that key ARN.
+5. In **CloudWatch → Log groups**, create `/ecs/breast-cancer-api` in the same Region.
+
+The task execution role lets ECS pull the ECR image, fetch Secrets Manager values, and send logs. It is not the application task role. The API itself does not need AWS permissions for inference.
+
+### 7. Create the ECS cluster and task definition
+
+1. Open **Amazon ECS → Clusters → Create cluster**, name it `breast-cancer-cluster`, choose the AWS Fargate option, and create the cluster.
+2. Open **Task definitions → Create new task definition**. Choose **AWS Fargate**, Linux/X86_64, and a small demo size such as 1 vCPU and 2 GB memory.
+3. Set the task execution role to `ecsTaskExecutionRole`. No task role is needed for the current API.
+4. Set the task-definition family to `breast-cancer-api`. Add a container named `breast-cancer-api`. For its image, use the full ECR image URI, for example `<account-id>.dkr.ecr.us-east-1.amazonaws.com/breast-cancer-api:v1`.
+5. Add a TCP port mapping for container port `5000`.
+6. Add container secrets by selecting Secrets Manager values and mapping `API_KEY` to the prediction-key secret ARN and `METRICS_API_KEY` to the metrics-key secret ARN.
+7. In the container's regular environment variables, set `TRUST_PROXY` to `1` only if you will configure the task security group exactly as described below, so that only the ALB can connect to task port 5000. Otherwise omit it.
+8. Add a CloudWatch log configuration using the `awslogs` driver, the same Region as the task, log group `/ecs/breast-cancer-api`, and stream prefix `ecs`.
+9. Add a container health check with command `CMD-SHELL, python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/health/ready', timeout=3)"`, interval 30 seconds, timeout 5 seconds, retries 3, and start period 30 seconds.
+10. Save/register the task definition. Confirm it is `ACTIVE` and its container has the correct image, port, secret references, logging configuration, and health check.
+
+The Docker image runs Waitress on port `5000`. It must include the model file created during training. The task definition stores secret references; ECS fetches their values at task startup using the execution role.
+
+### 8. Create the ALB and target group
+
+1. Open **EC2 → Load Balancing → Target Groups → Create target group**.
+2. Select **IP addresses** as the target type because Fargate tasks do not use EC2 instance targets.
+3. Choose HTTP protocol and port `5000`, select the VPC created above, and set the health-check path to `/health/ready`. Create the target group without registering targets; ECS will register task IPs.
+4. Open **EC2 → Load Balancers → Create load balancer → Application Load Balancer**. Set it to **internet-facing**, IPv4, choose the VPC and both public subnets, and attach `breast-cancer-alb-sg`.
+5. Configure an HTTPS listener on port `443` with the ACM certificate issued for your domain. Set its default forwarding action to the target group.
+6. Optionally add an HTTP listener on port `80` with a **redirect to HTTPS** action. Do not forward plaintext HTTP to the application.
+7. Create the ALB and wait until it is active.
+
+Do not make `/metrics` generally available through a public ALB. Prefer a private monitoring path. If it must traverse the public ALB, configure AWS WAF: create an IP set containing only the monitoring system's trusted outbound IPs, associate a web ACL with the ALB, allow requests to the `/metrics` path only when the source IP matches that set, and block other requests to `/metrics`. Keep the `X-Metrics-API-Key` requirement too; a key by itself is not a substitute for network restrictions. Review WAF costs and test that ordinary clients cannot reach `/metrics`.
+
+### 9. Create the ECS service in private subnets
 
 In the cluster, choose **Create service** and configure:
 
-1. Compute option **Launch type → Fargate** and select the task definition revision you created.
-2. Set the desired task count to `1` for the demo (increase it only after configuring shared rate-limit storage).
-3. Choose the VPC and **private subnet(s)** for the tasks; keep **Auto-assign public IP** disabled.
-4. Attach the task security group and ALB target group/listener configured above.
-5. Create the service and wait until the task is `RUNNING` and healthy.
+1. Compute option **Launch type → Fargate**; select the task-definition revision created above.
+2. Set the desired task count to `1` for this walkthrough. Do not scale multiple tasks while relying on the default in-memory rate limiter.
+3. Select the VPC and at least two **private subnets**, one in each selected AZ. Disable **Auto-assign public IP**.
+4. Attach `breast-cancer-task-sg`, not the ALB security group.
+5. Enable the load balancer integration. Select the ALB, HTTPS listener/target group, and container mapping `breast-cancer-api:5000`.
+6. Set a suitable health-check grace period (for example, 60 seconds) and create the service.
+7. Open the service's **Tasks** and **Events** tabs. Wait until a task is `RUNNING` and the target group shows it as **healthy**. If a task stops, inspect its stopped reason and CloudWatch log stream.
 
-Use the ALB's HTTPS DNS name or your configured domain to test readiness:
+If the application is behind the ALB, set `TRUST_PROXY=1` as a regular task environment variable only when the task security group allows traffic on port 5000 solely from the ALB security group. This allows the app to use the forwarded client IP for rate limiting; never trust forwarded headers when clients can connect directly to the task.
 
-```powershell
-$TaskUrl = "https://<alb-dns-name-or-domain>"
-curl.exe "$TaskUrl/health/ready"
-```
+### 10. Point the domain at the ALB and verify
 
-Expected health response:
+In Route 53, open the hosted zone for your domain and create an **A — Alias** record for the API subdomain, selecting the ALB as its target. If using another DNS provider, create its supported ALB alias/CNAME record. Wait for DNS to propagate. The domain in the URL must match the ACM certificate.
 
-```json
-{"status":"ready"}
-```
-
-To try inference, send the 30 numeric dataset features in the same order used by scikit-learn:
+Set the endpoint in PowerShell and check the health routes:
 
 ```powershell
-curl.exe -X POST "$TaskUrl/predict" `
+$ApiUrl = "https://api.example.com" # Replace with the DNS name on your ACM certificate
+curl.exe "$ApiUrl/health/live"
+curl.exe "$ApiUrl/health/ready"
+```
+
+Both should return HTTP 200 and a small JSON status response. Test a valid prediction using the sample feature vector:
+
+```powershell
+curl.exe -X POST "$ApiUrl/predict" `
   -H "Content-Type: application/json" `
   -H "X-API-Key: <your-api-key>" `
   -d '{"features":[17.99,10.38,122.8,1001.0,0.1184,0.2776,0.3001,0.1471,0.2419,0.07871,1.095,0.9053,8.589,153.4,0.006399,0.04904,0.05373,0.01587,0.03003,0.006193,25.38,17.33,184.6,2019.0,0.1622,0.6656,0.7119,0.2654,0.4601,0.1189]}'
 ```
 
-Enable `TRUST_PROXY=1` in the task only when the task security group ensures all client traffic comes through the ALB. For multiple tasks, use shared Redis-compatible rate-limit storage so the configured limit applies across the service, not independently per task.
+The response contains a predicted class (`0` or `1`). Confirm an incorrect or missing `X-API-Key` returns `401`. If you can reach `/metrics` from an approved monitoring network, test it with `curl.exe -H "X-Metrics-API-Key: <your-metrics-key>" "$ApiUrl/metrics"`; do not expose it through a public route without the network controls above.
 
-### 6. Updates, logs, and cleanup
+### 11. Logs, troubleshooting, updates, and cleanup
 
-To release an updated model or API, rebuild and push a new version tag to ECR, update the ECS task definition to reference that tag, and update the service to use the new task definition revision. Check startup/runtime output in the task's CloudWatch log group. If a task fails to start, verify that the image tag exists in ECR, `model/model.pkl` was included in the image, the execution role can pull from ECR, and the task can reach required AWS endpoints.
+**Logs and troubleshooting:** Open **CloudWatch → Log groups → `/ecs/breast-cancer-api`** and inspect the stream for the stopped or running task. Common causes are a missing `model/model.pkl` in the image; wrong image URI/tag; task execution role lacking ECR, logging, or Secrets Manager permissions; wrong Region or secret ARN; task security group not permitting traffic from the ALB security group; incorrect target group port/path; private subnets missing NAT/endpoints needed to pull images or fetch secrets; or an ACM certificate/domain mismatch. ECS service events and the target group's target-health reason help distinguish network problems from application startup errors.
 
-When finished, delete the ECS service (and ALB/target group if created), then the cluster and ECR repository if no longer needed. Also remove unused CloudWatch log groups. ECS tasks, load balancers, image storage, and logs may incur charges.
+**Release a new version manually:** Train and test as above, choose a new immutable image tag (for example `v2`), build and push it to ECR, then update the ECS task definition to that image and register a new revision. Update the ECS service to use the new revision and wait for tasks and target health checks to become healthy. Do not overwrite an existing immutable tag.
+
+**Scale out:** Before increasing desired task count, configure shared Redis-compatible storage using `RATELIMIT_STORAGE_URI` (prefer TLS and private networking), and ensure all tasks can reach it. The default limiter is in-memory, so each task would otherwise enforce its own separate limit. Store the URI as a Secrets Manager secret and grant the execution role access to it. Update the task definition and deploy the new revision.
+
+**Clean up to stop charges:** Delete the ECS service first (wait for tasks to stop), then delete the ALB and target group, ECS cluster, ECR repository/images, CloudWatch log group, unused Secrets Manager secrets, and the VPC/NAT gateway only after confirming no other resources use them. Delete the ACM certificate only when it is no longer attached or needed. Consider enabling ECR lifecycle rules to remove old images. Check the AWS Billing console after cleanup.
 
 ### Automated AWS deployment from GitHub Actions
 
 `.github/workflows/deploy-aws.yml` tests the API, trains the model, builds a uniquely tagged image, pushes it to ECR, registers a new ECS task-definition revision, and waits for the ECS service to become stable. It uses GitHub's OIDC federation to assume an AWS role; no long-lived AWS access key is stored in GitHub. The job is disabled until explicitly enabled.
 
+The manual deployment above is the recommended first deployment because it makes each AWS resource visible and understandable. Use the GitHub Actions option only after the manual ECS service is healthy.
+
 Before enabling it:
 
-1. Create the ECR repository, ECS cluster, Fargate service, task definition, and Secrets Manager API-key secret using the manual steps above.
+1. Complete the manual setup above, including the ECR repository, ECS cluster/service, task definition, HTTPS ALB, network rules, and both `API_KEY` and `METRICS_API_KEY` Secrets Manager secrets. The workflow updates the container image; it does not provision any of these resources or secrets.
 2. Create an IAM OIDC identity provider for `token.actions.githubusercontent.com` in the AWS account (if one does not already exist).
 3. Create a GitHub Actions IAM role with a trust policy restricted to audience `sts.amazonaws.com` and this repository's `main` branch subject: `repo:Ayush-Singh986/MLOPS-endtoend-pipeline:ref:refs/heads/main`. Replace `<account-id>` with the AWS account ID:
 
@@ -227,7 +360,7 @@ Before enabling it:
    }
    ```
 
-4. Attach a least-privilege permissions policy to that role. It needs `ecr:GetAuthorizationToken` on `*`; ECR image upload actions only on the chosen repository ARN; ECS describe/register actions for the chosen task definition (some describe/register actions require `*`); `ecs:UpdateService` and `ecs:DescribeServices` only on the chosen service ARN; and `iam:PassRole` only for the ECS task execution/task roles referenced by the task definition, conditioned on `iam:PassedToService` being `ecs-tasks.amazonaws.com`. Avoid `AdministratorAccess`. Confirm the final resource scopes against the ECS/ECR IAM action reference for your account.
+4. Attach a least-privilege permissions policy to that role. It needs `ecr:GetAuthorizationToken` on `*`; `ecr:BatchCheckLayerAvailability`, `ecr:InitiateLayerUpload`, `ecr:UploadLayerPart`, `ecr:CompleteLayerUpload`, and `ecr:PutImage` only on the chosen repository ARN; `ecs:DescribeTaskDefinition`, `ecs:RegisterTaskDefinition`, `ecs:UpdateService`, and `ecs:DescribeServices` scoped to the task definition/service where the action supports resource scoping; and `iam:PassRole` only for the ECS task execution/task roles referenced by the task definition, conditioned on `iam:PassedToService` being `ecs-tasks.amazonaws.com`. Some ECS actions require `Resource: "*"`. Avoid `AdministratorAccess`; confirm each action's resource-level permissions against the AWS IAM service-authorization reference.
 5. In GitHub **Settings → Secrets and variables → Actions → Variables**, add:
 
    | Variable | Example | Purpose |
@@ -242,7 +375,7 @@ Before enabling it:
    | `ECS_CONTAINER_NAME` | `breast-cancer-api` | Container name inside task definition |
 
 6. Confirm the ECS task definition injects `API_KEY` and `METRICS_API_KEY` from Secrets Manager, uses port `5000`, and has the health check enabled. Keep tasks in private subnets behind an HTTPS ALB and restrict the task security group to ALB traffic.
-7. Push a change to `main` that touches `model/` or `docker/`, or manually run **Actions → Train and deploy to AWS ECS → Run workflow**.
+7. Test with **Actions → Train and deploy to AWS ECS → Run workflow** first. After that, a push to `main` that changes a file under `model/` or `docker/`, or changes this workflow, automatically starts deployment. A README-only change does not trigger it.
 
 The workflow updates only the container image in the existing task definition. It does not create AWS infrastructure, generate API keys, alter networking, or provision an ALB. Review the AWS role's trust and permissions and the ECS service's network settings before enabling automatic deployments.
 
