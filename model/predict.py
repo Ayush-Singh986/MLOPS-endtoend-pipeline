@@ -17,6 +17,10 @@ API_KEY = os.environ.get("API_KEY")
 if not API_KEY or len(API_KEY) < 32:
     raise RuntimeError("API_KEY must be configured with at least 32 characters")
 
+METRICS_API_KEY = os.environ.get("METRICS_API_KEY", API_KEY)
+if len(METRICS_API_KEY) < 32:
+    raise RuntimeError("METRICS_API_KEY must contain at least 32 characters")
+
 MODEL_PATH = Path(__file__).with_name("model.pkl")
 model = joblib.load(MODEL_PATH)
 EXPECTED_FEATURES = int(model.n_features_in_)
@@ -44,6 +48,19 @@ PrometheusMetrics(app, group_by="endpoint")
 @app.before_request
 def start_request_timer():
     g.request_started_at = time.perf_counter()
+
+
+@app.before_request
+def protect_metrics():
+    if request.path != "/metrics":
+        return None
+
+    supplied_key = request.headers.get("X-Metrics-API-Key", "")
+    if not hmac.compare_digest(
+        supplied_key.encode("utf-8"), METRICS_API_KEY.encode("utf-8")
+    ):
+        return jsonify(error="unauthorized"), 401
+    return None
 
 
 @app.after_request
@@ -124,8 +141,10 @@ def predict():
 
     try:
         prediction = model.predict(feature_array.reshape(1, -1))[0]
-    except Exception:
-        app.logger.exception("model prediction failed")
+    except Exception as error:
+        app.logger.error(
+            "model prediction failed error_type=%s", type(error).__name__
+        )
         return jsonify(error="prediction failed"), 500
 
     return jsonify(prediction=int(prediction))

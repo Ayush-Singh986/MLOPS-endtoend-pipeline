@@ -71,12 +71,12 @@ The API listens on `http://127.0.0.1:5000`.
 |---|---|---|---|
 | `GET` | `/health/live` | None | Process liveness check |
 | `GET` | `/health/ready` | None | Readiness check after loading the model |
-| `GET` | `/metrics` | None | Prometheus request metrics |
+| `GET` | `/metrics` | `X-Metrics-API-Key` header | Prometheus request metrics |
 | `POST` | `/predict` | `X-API-Key` header | Predict one class from 30 numeric features |
 
-`/predict` validates the JSON body, feature count and numeric finite values. Requests without the configured key return `401`; requests are rate limited to 30 per minute by default. To try it locally, send the same API key in the `X-API-Key` header with the 30 input values in the dataset's original order.
+`/predict` validates the JSON body, feature count and numeric finite values. Requests without the configured key return `401`; requests are rate limited to 30 per minute by default. `/metrics` requires a separate monitoring key; if `METRICS_API_KEY` is not set, it falls back to `API_KEY` for local simplicity. Use distinct secrets in a deployment, and expose metrics only to trusted monitoring systems. To try inference locally, send the API key in the `X-API-Key` header with 30 input values in the dataset's original order.
 
-Run the API tests from the `model` directory with `API_KEY` set:
+Run the API tests from the `model` directory with `API_KEY` set. The test suite also checks that metrics require authentication:
 
 ```powershell
 $env:API_KEY = "test-api-key-that-is-at-least-32-characters"
@@ -87,7 +87,7 @@ python -m unittest discover -s tests -v
 
 The Dockerfile packages the API with Waitress, runs it as a non-root user, and includes a readiness health check. The original GitHub Actions workflow trains the model and builds/pushes a Docker image to Docker Hub when code is pushed to `main` (Docker Hub credentials must be configured as repository secrets).
 
-The API exports Prometheus request metrics at `/metrics`, but the repository's Kubernetes, Prometheus, and Grafana deployment files still need configuration before they can be used as a monitoring stack. The separate `model/drift_check.py` script demonstrates an offline comparison of dataset subsets; it does not detect live feature drift.
+The API exports Prometheus request metrics at `/metrics`, protected by `X-Metrics-API-Key`. The repository's Kubernetes, Prometheus, and Grafana deployment files still need configuration before they can be used as a monitoring stack. The separate `model/drift_check.py` script demonstrates an offline comparison of dataset subsets; it does not detect live feature drift.
 
 ## Deploy to AWS (ECR + ECS Fargate)
 
@@ -137,7 +137,7 @@ Use an immutable release tag such as `v1` rather than `latest` so task definitio
 
 ### 3. Prepare ECS permissions and cluster
 
-1. In the AWS Console, open **IAM → Roles** and create (or confirm) the ECS task execution role named `ecsTaskExecutionRole`, using the **Elastic Container Service Task** trusted entity and attaching the AWS-managed `AmazonECSTaskExecutionRolePolicy`. ECS uses this role to pull the private ECR image and write container logs. Add `secretsmanager:GetSecretValue` permission scoped to the specific API-key secret ARN (and `kms:Decrypt` for its customer-managed KMS key, if applicable).
+1. In the AWS Console, open **IAM → Roles** and create (or confirm) the ECS task execution role named `ecsTaskExecutionRole`, using the **Elastic Container Service Task** trusted entity and attaching the AWS-managed `AmazonECSTaskExecutionRolePolicy`. ECS uses this role to pull the private ECR image and write container logs. Add `secretsmanager:GetSecretValue` permission scoped to the specific API-key, metrics-key, and (if used) rate-limit-storage secret ARNs, plus `kms:Decrypt` for their customer-managed KMS key if applicable.
 2. Open **Amazon ECS → Clusters → Create cluster**. Choose the **AWS Fargate (serverless)** infrastructure option, give the cluster a name such as `breast-cancer-cluster`, and create it.
 
 Do not put AWS credentials inside the image or application. The app itself does not need an AWS task role for its current inference behavior.
@@ -154,22 +154,24 @@ In **ECS → Task definitions → Create new task definition**:
 6. Configure a container health check with command `python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/health/ready', timeout=3)"`, interval 30 seconds, timeout 5 seconds, retries 3, and start period 30 seconds. Configure this in the task definition so ECS uses it for service health.
 7. Save the task definition.
 
-The image starts Waitress and the API listens on port `5000`. The app requires an `API_KEY` at startup; create a secret in AWS Secrets Manager and configure the task definition's container `secrets` entry to inject it as `API_KEY`. Do not store the API key as plaintext in the task definition or GitHub.
+The image starts Waitress and the API listens on port `5000`. Create secrets in AWS Secrets Manager and configure the task definition's container `secrets` entries to inject them as `API_KEY` and `METRICS_API_KEY`. Use a different strong value for each. Do not store keys as plaintext in the task definition or GitHub. For a service with more than one task, also inject `RATELIMIT_STORAGE_URI` from Secrets Manager, using a private, access-controlled Redis-compatible endpoint (for example, a TLS `rediss://` URI). Without that setting, each task has its own in-memory rate-limit counter.
 
 ### 5. Run the service
+
+Put the Fargate tasks in **private subnets with no public IP**. Do not allow direct internet access to task port `5000`. Create an internet-facing **Application Load Balancer (ALB)** in at least two public subnets, configure an HTTPS listener on port `443` with an AWS Certificate Manager (ACM) certificate, and add a target group of type **IP** on port **5000** with health-check path `/health/ready`. Allow inbound `443` on the ALB security group; allow inbound `5000` on the task security group **only from the ALB security group**. If HTTP is enabled, redirect it to HTTPS. For `/metrics`, keep access private to the monitoring network where possible; if it must pass through a public ALB, restrict that path to trusted monitoring source IPs with AWS WAF or equivalent network controls. The endpoint also requires `X-Metrics-API-Key`.
 
 In the cluster, choose **Create service** and configure:
 
 1. Compute option **Launch type → Fargate** and select the task definition revision you created.
-2. Set the desired task count to `1`.
-3. Choose a VPC and public subnet(s). For a temporary demo without a load balancer, enable **Auto-assign public IP**.
-4. For a short-lived direct-IP test, create or select a security group whose inbound rule allows **TCP 5000 only from your current public IP**. Do not open port 5000 to `0.0.0.0/0`. For regular access, prefer the ALB setup below.
-5. Create the service and wait until the task is `RUNNING`.
+2. Set the desired task count to `1` for the demo (increase it only after configuring shared rate-limit storage).
+3. Choose the VPC and **private subnet(s)** for the tasks; keep **Auto-assign public IP** disabled.
+4. Attach the task security group and ALB target group/listener configured above.
+5. Create the service and wait until the task is `RUNNING` and healthy.
 
-For a direct-IP test, open the running task's **Networking** details, copy its public IP, and test:
+Use the ALB's HTTPS DNS name or your configured domain to test readiness:
 
 ```powershell
-$TaskUrl = "http://<task-public-ip>:5000"
+$TaskUrl = "https://<alb-dns-name-or-domain>"
 curl.exe "$TaskUrl/health/ready"
 ```
 
@@ -188,7 +190,7 @@ curl.exe -X POST "$TaskUrl/predict" `
   -d '{"features":[17.99,10.38,122.8,1001.0,0.1184,0.2776,0.3001,0.1471,0.2419,0.07871,1.095,0.9053,8.589,153.4,0.006399,0.04904,0.05373,0.01587,0.03003,0.006193,25.38,17.33,184.6,2019.0,0.1622,0.6656,0.7119,0.2654,0.4601,0.1189]}'
 ```
 
-The direct task IP can change when ECS replaces or restarts a task. For a stable endpoint, use an **Application Load Balancer (ALB)**: create an internet-facing ALB in at least two public subnets, configure an HTTPS listener and a target group of type **IP** on port `5000` with health-check path `/health/ready`, then attach it to the ECS service. Allow inbound `443` on the ALB security group, and allow port `5000` on the task security group **only from the ALB security group**. Configure a domain and TLS certificate with AWS Certificate Manager; redirect HTTP to HTTPS if you also configure port 80. Enable `TRUST_PROXY=1` in the task only when the task security group ensures all client traffic comes through the ALB.
+Enable `TRUST_PROXY=1` in the task only when the task security group ensures all client traffic comes through the ALB. For multiple tasks, use shared Redis-compatible rate-limit storage so the configured limit applies across the service, not independently per task.
 
 ### 6. Updates, logs, and cleanup
 
@@ -239,13 +241,41 @@ Before enabling it:
    | `ECS_TASK_DEFINITION` | `breast-cancer-api` | Task-definition family or ARN |
    | `ECS_CONTAINER_NAME` | `breast-cancer-api` | Container name inside task definition |
 
-6. Confirm the ECS task definition injects `API_KEY` from Secrets Manager, uses port `5000`, and has the health check enabled. Configure an ALB for HTTPS and restrict the task security group to ALB traffic for a public service.
+6. Confirm the ECS task definition injects `API_KEY` and `METRICS_API_KEY` from Secrets Manager, uses port `5000`, and has the health check enabled. Keep tasks in private subnets behind an HTTPS ALB and restrict the task security group to ALB traffic.
 7. Push a change to `main` that touches `model/` or `docker/`, or manually run **Actions → Train and deploy to AWS ECS → Run workflow**.
 
 The workflow updates only the container image in the existing task definition. It does not create AWS infrastructure, generate API keys, alter networking, or provision an ALB. Review the AWS role's trust and permissions and the ECS service's network settings before enabling automatic deployments.
 
 ### Security and operational limitations
 
-The API now uses Waitress, requires an `API_KEY`, validates prediction inputs, rate-limits requests, logs request metadata/errors without logging feature payloads, and exposes liveness/readiness and Prometheus metrics endpoints. Restrict `/metrics` to trusted monitoring systems. Rate limiting uses in-memory storage by default; for multiple ECS tasks, configure a shared Redis-compatible `RATELIMIT_STORAGE_URI` and private networking. Terminate HTTPS at an ALB with ACM; do not expose the task directly to the internet. This remains a learning example, not a production-ready medical service. Do not send real patient data to it or use its predictions for clinical decisions.
+The API uses Waitress, requires an `API_KEY`, validates prediction inputs, rate-limits requests, logs request metadata/errors without logging feature payloads, and exposes liveness/readiness and Prometheus metrics endpoints. `/metrics` requires `X-Metrics-API-Key` and should also be restricted to trusted monitoring systems at the network layer. Rate limiting uses in-memory storage by default; for multiple ECS tasks, configure a shared Redis-compatible `RATELIMIT_STORAGE_URI` and private networking. Terminate HTTPS at an ALB with ACM; keep tasks in private subnets and do not expose them directly to the internet. This remains a learning example, not a production-ready medical service. Do not send real patient data to it or use its predictions for clinical decisions.
 
 > **Disclaimer:** This is an educational example, not a medical diagnostic tool. Do not use its predictions for clinical decisions.
+
+## Explain this project in an interview
+
+### A simple end-to-end explanation
+
+> "This is an end-to-end MLOps learning project for classifying the built-in Breast Cancer Wisconsin dataset as malignant or benign. I load the data, split it into training and test sets, train Random Forest, Logistic Regression, and XGBoost models, and compare them using accuracy, precision, recall, and F1 score. I use MLflow to record each experiment's metrics, model name, and model artifact, then save the candidate with the best test accuracy as `model/model.pkl`.
+>
+> "The prediction API loads that saved model and serves it with Flask through Waitress. A client sends 30 numeric features as JSON and an API key. The API checks the request format, feature count, and finite numeric values, applies a request limit, and returns a class prediction. Health endpoints support service checks; Prometheus metrics are protected by a separate metrics key. Logs record request metadata and errors, not the feature values.
+>
+> "For delivery, GitHub Actions can test the API and train the model, then build a Docker image and publish it to Amazon ECR. An optional deployment workflow uses GitHub OIDC to update an ECS Fargate service. In a safe network layout, HTTPS ends at an ALB and the tasks stay in private subnets. The Kubernetes and Kubeflow files are additional examples; the local MLflow workflow and the Kubeflow workflow are separate.
+>
+> "This is a learning project using a public sample dataset. It is not a validated clinical system, and it must not be used with real patient data or for medical decisions."
+
+### The flow to remember
+
+1. **Data:** Load the public sample dataset and its 30 measurement features.
+2. **Train:** Fit three candidate classifiers on the training split.
+3. **Evaluate and track:** Compare test metrics and save the experiments in MLflow.
+4. **Package:** Save the selected model as a pickle artifact and include it in a Docker image.
+5. **Serve:** Waitress runs the Flask API; `/predict` validates and scores one request.
+6. **Operate:** Health checks, authenticated metrics, request limits, and metadata-only logs help operate the service.
+7. **Deploy:** GitHub Actions can publish the image to ECR and update ECS; the ALB provides HTTPS while task networking remains private.
+
+### Common follow-up questions
+
+- **Why track more than accuracy?** Accuracy alone can hide poor performance on one class. Precision, recall, and F1 provide additional views of the classification results; MLflow makes model runs easier to compare.
+- **Why validate inputs and use an API key?** Validation rejects malformed requests before they reach the model, while the key restricts who can call the prediction endpoint. Rate limiting helps control request volume.
+- **What is not fully production-ready?** This example uses a small public dataset and a simple train/test workflow. The default limiter is in-memory, monitoring and Kubernetes assets need deployment-specific configuration, and the Kubeflow deployment component is a stub. A real medical application would need extensive clinical validation, privacy/security controls, regulatory review, and operational safeguards.

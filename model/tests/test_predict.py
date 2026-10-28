@@ -12,16 +12,24 @@ class PredictionApiTests(unittest.TestCase):
         self.client = app.test_client()
         self.features = [0.0] * model.n_features_in_
         self.headers = {"X-API-Key": os.environ["API_KEY"]}
+        self.metrics_headers = {
+            "X-Metrics-API-Key": os.environ.get("METRICS_API_KEY", os.environ["API_KEY"])
+        }
 
     def test_health_endpoints_do_not_require_authentication(self):
         self.assertEqual(self.client.get("/health/live").status_code, 200)
         self.assertEqual(self.client.get("/health/ready").status_code, 200)
 
     def test_metrics_endpoint_is_available(self):
-        response = self.client.get("/metrics")
+        response = self.client.get("/metrics", headers=self.metrics_headers)
 
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"flask_http_request_total", response.data)
+
+    def test_metrics_endpoint_requires_its_api_key(self):
+        response = self.client.get("/metrics")
+
+        self.assertEqual(response.status_code, 401)
 
     def test_prediction_requires_api_key(self):
         response = self.client.post("/predict", json={"features": self.features})
